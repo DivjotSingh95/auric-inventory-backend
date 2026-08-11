@@ -1,0 +1,273 @@
+{
+  "products": [
+    {
+      "sku": "SU-ANARKALI-01",
+      "name": "Anarkali Embroidered Silk Suit Set",
+      "category": "Suits",
+      "costPrice": 1200,
+      "sellingPrice": 2800,
+      "sizes": {
+        "S": 2,
+        "M": 3,
+        "L": 2,
+        "XL": 1,
+        "XXL": 0
+      },
+      "threshold": 3
+    },
+    {
+      "sku": "KU-COTTON-02",
+      "name": "Designer Floral Cotton Kurti",
+      "category": "Kurtis",
+      "costPrice": 400,
+      "sellingPrice": 950,
+      "sizes": {
+        "S": 4,
+        "M": 5,
+        "L": 4,
+        "XL": 2,
+        "XXL": 0
+      },
+      "threshold": 5
+    },
+    {
+      "sku": "DR-SUMMER-03",
+      "name": "Floral Summer Georgette Dress",
+      "category": "Dresses",
+      "costPrice": 800,
+      "sellingPrice": 1850,
+      "sizes": {
+        "S": 1,
+        "M": 1,
+        "L": 0,
+        "XL": 0,
+        "XXL": 0
+      },
+      "threshold": 4
+    },
+    {
+      "sku": "TR-SLIM-04",
+      "name": "Slim Fit Cotton Trouser Pants",
+      "category": "Trousers",
+      "costPrice": 350,
+      "sellingPrice": 790,
+      "sizes": {
+        "S": 5,
+        "M": 5,
+        "L": 5,
+        "XL": 3,
+        "XXL": 2
+      },
+      "threshold": 8
+    },
+    {
+      "sku": "SA-BANARASI-05",
+      "name": "Banarasi Silk Saree Gold Border",
+      "category": "Sarees",
+      "costPrice": 2500,
+      "sellingPrice": 5500,
+      "sizes": {
+        "S": 0,
+        "M": 1,
+        "L": 0,
+        "XL": 0,
+        "XXL": 0
+      },
+      "threshold": 2
+    },
+    {
+      "sku": "KU-GEORGETTE-06",
+      "name": "Embroidered Georgette Kurti Set",
+      "category": "Kurtis",
+      "costPrice": 600,
+      "sellingPrice": 1400,
+      "sizes": {
+        "S": 0,
+        "M": 0,
+        "L": 0,
+        "XL": 0,
+        "XXL": 0
+      },
+      "threshold": 3
+    },
+    {
+      "sku": "DU-CHIFFON-07",
+      "name": "Solid Colored Chiffon Dupatta",
+      "category": "Dupattas",
+      "costPrice": 150,
+      "sellingPrice": 350,
+      "sizes": {
+        "S": 10,
+        "M": 10,
+        "L": 10,
+        "XL": 5,
+        "XXL": 5
+      },
+      "threshold": 8
+    }
+  ],
+  "sales": [
+    {
+      "id": "INV-10020",
+      "date": "2026-04-15T14:30:00",
+      "customer": "Priya Sharma",
+      "items": [
+        {
+          "sku": "SU-ANARKALI-01",
+          "name": "Anarkali Embroidered Silk Suit Set",
+          "size": "M",
+          "qty": 1,
+          "price": 2800,
+          "cost": 1200
+        },
+        {
+          "sku": "DU-CHIFFON-07",
+          "name": "Solid Colored Chiffon Dupatta",
+          "size": "M",
+          "qty": 1,
+          "price": 350,
+          "cost": 150
+        }
+      ],
+      "subtotal": 3150,
+      "discount": 5,
+      "total": 2992.5
+    },
+    {
+      "id": "INV-10021",
+      "date": "2026-05-05T10:15:00",
+      "customer": "Walk-in Customer",
+      "items": [
+        {
+          "sku": "KU-COTTON-02",
+          "name": "Designer Floral Cotton Kurti",
+          "size": "M",
+          "qty": 2,
+          "price": 950,
+          "cost": 400
+        }
+      ],
+      "subtotal": 1900,
+      "discount": 0,
+      "total": 1900
+    },
+    {
+      "id": "INV-10022",
+      "date": "2026-05-12T16:45:00",
+      "customer": "Komal Gupta",
+      "items": [
+        {
+          "sku": "SA-BANARASI-05",
+          "name": "Banarasi Silk Saree Gold Border",
+          "size": "M",
+          "qty": 1,
+          "price": 5500,
+          "cost": 2500
+        }
+      ],
+      "subtotal": 5500,
+      "discount": 10,
+      "total": 4950
+    },
+    {
+      "id": "INV-10023",
+      "date": "2026-05-18T11:20:00",
+      "customer": "Walk-in Customer",
+      "items": [
+        {
+          "sku": "DR-SUMMER-03",
+          "name": "Floral Summer Georgette Dress",
+          "size": "S",
+          "qty": 1,
+          "price": 1850,
+          "cost": 800
+        },
+        {
+          "sku": "TR-SLIM-04",
+          "name": "Slim Fit Cotton Trouser Pants",
+          "size": "M",
+          "qty": 1,
+          "price": 790,
+          "cost": 350
+        }
+      ],
+      "subtotal": 2640,
+      "discount": 0,
+      "total": 2640
+    },
+    {
+      "id": "INV-10024",
+      "date": "2026-05-20T09:05:00",
+      "customer": "Sneha Reddy",
+      "items": [
+        {
+          "sku": "DU-CHIFFON-07",
+          "name": "Solid Colored Chiffon Dupatta",
+          "size": "S",
+          "qty": 3,
+          "price": 350,
+          "cost": 150
+        }
+      ],
+      "subtotal": 1050,
+      "discount": 0,
+      "total": 1050
+    }
+  ],
+  "expenses": [
+    {
+      "id": "EXP-100",
+      "date": "2026-04-01",
+      "category": "Rent",
+      "desc": "Boutique Retail Space Lease - April",
+      "amount": 35000
+    },
+    {
+      "id": "EXP-101",
+      "date": "2026-04-10",
+      "category": "Utilities",
+      "desc": "Electricity bill & Showroom Wifi",
+      "amount": 6200
+    },
+    {
+      "id": "EXP-102",
+      "date": "2026-05-01",
+      "category": "Rent",
+      "desc": "Boutique Retail Space Lease - May",
+      "amount": 35000
+    },
+    {
+      "id": "EXP-103",
+      "date": "2026-05-08",
+      "category": "Utilities",
+      "desc": "High-power AC Electricity Bill",
+      "amount": 8900
+    },
+    {
+      "id": "EXP-104",
+      "date": "2026-05-15",
+      "category": "Salaries",
+      "desc": "Master Tailor & Sales Assistant Salary",
+      "amount": 45000
+    },
+    {
+      "id": "EXP-105",
+      "date": "2026-05-21",
+      "category": "Marketing",
+      "desc": "Instagram & Facebook Collection Ads",
+      "amount": 15000
+    },
+    {
+      "id": "EXP-106",
+      "date": "2026-05-21",
+      "category": "Inventory",
+      "desc": "Lace trim borders & lining thread rolls",
+      "amount": 4800
+    }
+  ],
+  "vendors": [],
+  "purchaseOrders": [],
+  "vendorPayments": [],
+  "vendorReturns": [],
+  "borrowings": []
+}
