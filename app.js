@@ -835,6 +835,16 @@ function renderStockPage() {
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
+  const sortFilter = document.getElementById("stock-sort-filter") ? document.getElementById("stock-sort-filter").value : "default";
+  filtered.sort((a, b) => {
+    if (sortFilter === "date-newest") {
+      return new Date(b.dateAdded || 0) - new Date(a.dateAdded || 0);
+    } else if (sortFilter === "date-oldest") {
+      return new Date(a.dateAdded || 0) - new Date(b.dateAdded || 0);
+    }
+    return 0;
+  });
+
   if (filtered.length > 0) {
     tableBody.innerHTML = filtered.map((p, idx) => {
       const totalStock = getProductStock(p);
@@ -902,6 +912,7 @@ function renderStockPage() {
           <td>${formatCurrency(p.sellingPrice)}</td>
           <td>${sizesContainerHTML}</td>
           <td class="text-muted">${p.threshold}</td>
+          <td class="font-mono text-xs">${p.dateAdded ? new Date(p.dateAdded).toLocaleDateString() : 'N/A'}</td>
           <td>${statusBadge}</td>
           <td class="text-right">
             <div class="action-buttons">
@@ -1700,6 +1711,12 @@ function initEventListeners() {
     });
 
     const updatedProduct = { sku, name, category, costPrice, sellingPrice, sizes, threshold, vendorName, variants };
+    
+    if (editIdx !== "") {
+      updatedProduct.dateAdded = oldP.dateAdded || new Date().toISOString();
+    } else {
+      updatedProduct.dateAdded = new Date().toISOString();
+    }
 
     try {
       const response = await fetch('https://auric-inventory-backend.onrender.com/api/products', {
@@ -1870,6 +1887,8 @@ function initEventListeners() {
   document.getElementById("stock-search").addEventListener("input", renderStockPage);
   document.getElementById("stock-category-filter").addEventListener("change", renderStockPage);
   document.getElementById("stock-status-filter").addEventListener("change", renderStockPage);
+  const sortFilterEl = document.getElementById("stock-sort-filter");
+  if (sortFilterEl) sortFilterEl.addEventListener("change", renderStockPage);
 
   // New Low Stock filtering events
   document.getElementById("lowstock-search").addEventListener("input", renderLowStockPage);

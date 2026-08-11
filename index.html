@@ -409,6 +409,11 @@
                 <option value="low-stock">Low Stock</option>
                 <option value="out-of-stock">Out of Stock</option>
               </select>
+              <select id="stock-sort-filter" class="form-select select-inline">
+                <option value="default">Default Sort</option>
+                <option value="date-newest">Date Added (Newest First)</option>
+                <option value="date-oldest">Date Added (Oldest First)</option>
+              </select>
             </div>
             <div class="control-right">
               <button class="btn btn-primary" id="add-product-btn">
@@ -431,6 +436,7 @@
                     <th>Selling Price</th>
                     <th>Stock Qty</th>
                     <th>Alert Threshold</th>
+                    <th>Date Added</th>
                     <th>Status</th>
                     <th class="text-right">Actions</th>
                   </tr>
