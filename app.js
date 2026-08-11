@@ -62,7 +62,7 @@ function getProductStock(p) {
 // --- LocalStorage Synchronization ---
 async function loadData() {
   try {
-    const response = await fetch('/api/data');
+    const response = await fetch('https://auric-inventory-backend.onrender.com/api/data');
     if (!response.ok) throw new Error('Network response was not ok');
     const data = await response.json();
     products = data.products || [];
@@ -749,7 +749,7 @@ async function handleCheckout() {
   };
 
   try {
-    const response = await fetch('/api/sales', {
+    const response = await fetch('https://auric-inventory-backend.onrender.com/api/sales', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1130,7 +1130,7 @@ function renderBorrowingsPage() {
 async function writeOffBorrowing(id) {
   if(!confirm("Are you sure you want to write off/settle this borrowing? It will be marked as paid.")) return;
   try {
-    const response = await fetch('/api/borrowings/' + id + '/writeoff', { method: 'POST' });
+    const response = await fetch('https://auric-inventory-backend.onrender.com/api/borrowings/' + id + '/writeoff', { method: 'POST' });
     if(response.ok) {
       showToast("Borrowing settled successfully!", "success");
       await loadData();
@@ -1538,7 +1538,7 @@ function renderCustomerDebts() {
 async function settleCustomerDebt(id) {
   if(!confirm("Are you sure you want to mark this debt as PAID?")) return;
   try {
-    const response = await fetch('/api/sales/' + id + '/settle', { method: 'POST' });
+    const response = await fetch('https://auric-inventory-backend.onrender.com/api/sales/' + id + '/settle', { method: 'POST' });
     if(response.ok) {
       showToast("Debt settled successfully!", "success");
       await loadData();
@@ -1702,7 +1702,7 @@ function initEventListeners() {
     const updatedProduct = { sku, name, category, costPrice, sellingPrice, sizes, threshold, vendorName, variants };
 
     try {
-      const response = await fetch('/api/products', {
+      const response = await fetch('https://auric-inventory-backend.onrender.com/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1758,7 +1758,7 @@ function initEventListeners() {
       updatedProduct.variants[varKey].stock = (updatedProduct.variants[varKey].stock || 0) + qty;
 
       try {
-        const response = await fetch('/api/products', {
+        const response = await fetch('https://auric-inventory-backend.onrender.com/api/products', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1799,7 +1799,7 @@ function initEventListeners() {
     };
 
     try {
-      const response = await fetch('/api/borrowings', {
+      const response = await fetch('https://auric-inventory-backend.onrender.com/api/borrowings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBorrowing)
@@ -1835,7 +1835,7 @@ function initEventListeners() {
     };
 
     try {
-      const response = await fetch('/api/expenses', {
+      const response = await fetch('https://auric-inventory-backend.onrender.com/api/expenses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1933,7 +1933,7 @@ function initEventListeners() {
   document.getElementById("clear-all-data-btn").addEventListener("click", async () => {
     if (confirm("Are you sure you want to clear ALL products, sales history, and expenses? This will permanently delete everything and start fresh with an empty database.")) {
       try {
-        const response = await fetch('/api/reset', {
+        const response = await fetch('https://auric-inventory-backend.onrender.com/api/reset', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1961,7 +1961,7 @@ function initEventListeners() {
   document.getElementById("restore-demo-data-btn").addEventListener("click", async () => {
     if (confirm("Are you sure you want to restore the preloaded clothing boutique demo data? This will overwrite your current products, sales, and expenses.")) {
       try {
-        const response = await fetch('/api/reset', {
+        const response = await fetch('https://auric-inventory-backend.onrender.com/api/reset', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -2354,7 +2354,7 @@ async function handlePOSubmit(e) {
   };
   
   try {
-    const res = await fetch('/api/purchase-orders', {
+    const res = await fetch('https://auric-inventory-backend.onrender.com/api/purchase-orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(poData)
@@ -2597,7 +2597,7 @@ function renderVendorLiabilities() {
 async function settleVendorPO(poNumber) {
   if(!confirm("Are you sure you want to log a payment and settle this Purchase Order?")) return;
   try {
-    const response = await fetch('/api/purchase-orders/' + poNumber + '/settle', { method: 'POST' });
+    const response = await fetch('https://auric-inventory-backend.onrender.com/api/purchase-orders/' + poNumber + '/settle', { method: 'POST' });
     if(response.ok) {
       showToast("Purchase Order settled successfully!", "success");
       await loadData();
@@ -2631,7 +2631,7 @@ async function handleVendorPaymentSubmit(e) {
   };
   
   try {
-    const res = await fetch('/api/vendor-payments', {
+    const res = await fetch('https://auric-inventory-backend.onrender.com/api/vendor-payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payData)
@@ -2711,7 +2711,7 @@ async function handleVendorReturnSubmit(e) {
   };
   
   try {
-    const res = await fetch('/api/vendor-returns', {
+    const res = await fetch('https://auric-inventory-backend.onrender.com/api/vendor-returns', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(retData)

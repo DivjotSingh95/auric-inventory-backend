@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://auric-backend.onrender.com/api/$1"
+      "destination": "https://auric-inventory-backend.onrender.com/api/$1"
     }
   ]
 }
