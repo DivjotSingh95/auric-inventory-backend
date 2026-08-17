@@ -277,6 +277,14 @@
                   <span>Discount (%)</span>
                   <input type="number" id="cart-discount" min="0" max="100" value="0" class="form-control discount-input">
                 </div>
+                <div class="summary-row">
+                  <span>GST (%)</span>
+                  <select id="cart-gst" class="form-select" style="width: 80px; padding: 0.2rem; height: 30px;">
+                    <option value="0">0%</option>
+                    <option value="5">5%</option>
+                    <option value="18">18%</option>
+                  </select>
+                </div>
                 <div class="summary-row font-bold text-lg border-top pt-sm">
                   <span>Total</span>
                   <span class="text-emerald" id="cart-total">₹0.00</span>
@@ -1096,6 +1104,10 @@
             <div class="receipt-totals-row">
               <span>Discount</span>
               <span id="receipt-discount">-₹0.00</span>
+            </div>
+            <div class="receipt-totals-row" id="receipt-gst-row" style="display: none;">
+              <span>GST (<span id="receipt-gst-pct">0</span>%)</span>
+              <span id="receipt-gst-val">+₹0.00</span>
             </div>
             <div class="divider-double"></div>
             <div class="receipt-totals-row font-bold text-lg">

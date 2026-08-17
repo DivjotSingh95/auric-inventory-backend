@@ -569,8 +569,11 @@ function renderCart() {
   // Subtotals
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const discountPct = parseFloat(document.getElementById("cart-discount").value) || 0;
+  const gstPct = parseFloat(document.getElementById("cart-gst").value) || 0;
   const discountVal = subtotal * (discountPct / 100);
-  const total = subtotal - discountVal;
+  const afterDiscount = subtotal - discountVal;
+  const gstVal = afterDiscount * (gstPct / 100);
+  const total = afterDiscount + gstVal;
 
   document.getElementById("cart-subtotal").textContent = formatCurrency(subtotal);
   document.getElementById("cart-total").textContent = formatCurrency(total);
@@ -712,6 +715,7 @@ function clearCart() {
   if (cart.length === 0) return;
   cart = [];
   document.getElementById("cart-discount").value = 0;
+  document.getElementById("cart-gst").value = 0;
   document.getElementById("sale-customer-name").value = "";
   renderCart();
   renderSalesPage();
@@ -725,9 +729,12 @@ async function handleCheckout() {
   const customerName = document.getElementById("sale-customer-name").value.trim() || "Walk-in Customer";
   const paymentMode = document.getElementById("sale-payment-mode").value || "Cash";
   const discountPct = parseFloat(document.getElementById("cart-discount").value) || 0;
+  const gstPct = parseFloat(document.getElementById("cart-gst").value) || 0;
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const discountVal = subtotal * (discountPct / 100);
-  const total = subtotal - discountVal;
+  const afterDiscount = subtotal - discountVal;
+  const gstVal = afterDiscount * (gstPct / 100);
+  const total = afterDiscount + gstVal;
 
   console.log("handleCheckout: customer =", customerName, "total =", total);
 
@@ -745,6 +752,8 @@ async function handleCheckout() {
     items: [...cart],
     subtotal: subtotal,
     discount: discountPct,
+    gstRate: gstPct,
+    gstAmount: gstVal,
     total: total
   };
 
@@ -772,6 +781,7 @@ async function handleCheckout() {
     // Clear Cart
     cart = [];
     document.getElementById("cart-discount").value = 0;
+    document.getElementById("cart-gst").value = 0;
     document.getElementById("sale-customer-name").value = "";
     
     // Re-render
@@ -807,6 +817,16 @@ function showReceipt(sale) {
   document.getElementById("receipt-subtotal").textContent = formatCurrency(sale.subtotal);
   const discountVal = sale.subtotal * (sale.discount / 100);
   document.getElementById("receipt-discount").textContent = `-${formatCurrency(discountVal)} (${sale.discount}%)`;
+  
+  if (sale.gstRate > 0) {
+    document.getElementById("receipt-gst-row").style.display = "flex";
+    document.getElementById("receipt-gst-pct").textContent = sale.gstRate;
+    document.getElementById("receipt-gst-val").textContent = `+${formatCurrency(sale.gstAmount || 0)}`;
+  } else {
+    const gstRow = document.getElementById("receipt-gst-row");
+    if (gstRow) gstRow.style.display = "none";
+  }
+
   document.getElementById("receipt-total").textContent = formatCurrency(sale.total);
 
   openModal("receipt-modal");
@@ -1882,6 +1902,7 @@ function initEventListeners() {
   const slFilter = document.getElementById("sales-ledger-filter");
   if (slFilter) slFilter.addEventListener("change", renderSalesLedger);
   document.getElementById("cart-discount").addEventListener("input", renderCart);
+  document.getElementById("cart-gst").addEventListener("change", renderCart);
   document.getElementById("checkout-btn").addEventListener("click", handleCheckout);
 
   document.getElementById("stock-search").addEventListener("input", renderStockPage);
