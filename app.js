@@ -1,5 +1,25 @@
 // AURIC BY SYLVIE AND SHUBHI clothing store core JS engine
 
+// Global Authentication Interceptor
+const originalFetch = window.fetch;
+window.fetch = async function() {
+  let [resource, config] = arguments;
+  if(typeof resource === 'string' && resource.includes('/api/')) {
+    config = config || {};
+    config.headers = config.headers || {};
+    const token = localStorage.getItem('auric_token');
+    if(token) config.headers['authorization'] = token;
+  }
+  const response = await originalFetch(resource, config);
+  if (response.status === 401 && !resource.includes('/api/login')) {
+    localStorage.removeItem('auric_token');
+    document.getElementById("app-container").style.display = "none";
+    document.getElementById("login-container").style.display = "flex";
+    throw new Error('Unauthorized'); // Halt execution
+  }
+  return response;
+};
+
 // --- State Variables ---
 let products = [];
 let sales = [];
@@ -17,6 +37,17 @@ let expenseDoughnutChart = null;
 
 // --- Initialize App ---
 document.addEventListener("DOMContentLoaded", async () => {
+  initAuthListeners();
+  const token = localStorage.getItem('auric_token');
+  if (!token) {
+    document.getElementById("app-container").style.display = "none";
+    document.getElementById("login-container").style.display = "flex";
+    return;
+  }
+  
+  document.getElementById("login-container").style.display = "none";
+  document.getElementById("app-container").style.display = "flex";
+
   await loadData();
   initRouting();
   initTheme();
@@ -2829,5 +2860,73 @@ async function handleVariantPriceSubmit(e) {
   } catch (err) {
     console.error(err);
     showToast("Error updating variant selling price", "error");
+  }
+}
+
+// --- Authentication Logic ---
+function initAuthListeners() {
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-id').value.trim();
+      const password = document.getElementById('login-password').value;
+      try {
+        const res = await originalFetch('https://auric-inventory-backend.onrender.com/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem('auric_token', data.token);
+          window.location.reload();
+        } else {
+          showToast(data.error || "Login Failed", "error");
+        }
+      } catch (err) {
+        showToast("Error connecting to server", "error");
+      }
+    });
+  }
+
+  const logoutTrigger = document.getElementById('logout-trigger');
+  if (logoutTrigger) {
+    logoutTrigger.addEventListener('click', () => {
+      localStorage.removeItem('auric_token');
+      window.location.reload();
+    });
+  }
+
+  const settingsTrigger = document.getElementById('settings-trigger');
+  if (settingsTrigger) {
+    settingsTrigger.addEventListener('click', () => openModal('settings-modal'));
+  }
+
+  const settingsForm = document.getElementById('settings-form');
+  if (settingsForm) {
+    settingsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const oldPassword = document.getElementById('settings-old-pwd').value;
+      const newUsername = document.getElementById('settings-new-id').value.trim();
+      const newPassword = document.getElementById('settings-new-pwd').value;
+      try {
+        const res = await fetch('https://auric-inventory-backend.onrender.com/api/change-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldPassword, newUsername, newPassword })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Credentials updated successfully!", "success");
+          closeModal('settings-modal');
+          settingsForm.reset();
+        } else {
+          showToast(data.error || "Failed to update credentials", "error");
+        }
+      } catch (err) {
+        showToast("Error connecting to server", "error");
+      }
+    });
   }
 }

@@ -73,17 +73,54 @@ function readDb() {
       data.vendorPayments = data.vendorPayments || [];
       data.vendorReturns = data.vendorReturns || [];
       data.borrowings = data.borrowings || [];
+      data.auth = data.auth || { username: "admin", password: "password" }; // Default password is password because the user is going to change it anyways, but I will set it to auric123 since I said that in the plan
+      data.auth.password = data.auth.password === "password" ? "auric123" : data.auth.password; // Backwards compatible fix
       return data;
     }
   } catch (err) {
     console.error("Error reading database:", err);
   }
-  return { products: [], sales: [], expenses: [], vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [] };
+  return { products: [], sales: [], expenses: [], vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [], auth: { username: "admin", password: "auric123" } };
 }
 
 function writeDb(data) {
   fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
 }
+
+// AUTH ENDPOINTS
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const db = readDb();
+  if (db.auth.username === username && db.auth.password === password) {
+    res.json({ success: true, token: "AURIC_AUTH_TOKEN_V1" });
+  } else {
+    res.status(401).json({ error: "Invalid credentials" });
+  }
+});
+
+app.post('/api/change-credentials', (req, res) => {
+  const { oldPassword, newUsername, newPassword } = req.body;
+  const db = readDb();
+  if (db.auth.password !== oldPassword) {
+    return res.status(401).json({ error: "Incorrect current password" });
+  }
+  db.auth.username = newUsername || db.auth.username;
+  db.auth.password = newPassword || db.auth.password;
+  writeDb(db);
+  res.json({ success: true });
+});
+
+// AUTH MIDDLEWARE
+app.use('/api/', (req, res, next) => {
+  if (req.path === '/login' || req.method === 'OPTIONS') {
+    return next();
+  }
+  const token = req.headers['authorization'];
+  if (token !== "AURIC_AUTH_TOKEN_V1") {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+});
 
 // 1. GET /api/data
 app.get('/api/data', (req, res) => {
