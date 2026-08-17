@@ -291,8 +291,13 @@
                 </div>
                 
                 <div class="form-group mb-sm">
-                  <label class="form-label" for="sale-customer-name">Customer Name / Phone</label>
+                  <label class="form-label" for="sale-customer-name">Customer Name</label>
                   <input type="text" id="sale-customer-name" placeholder="Walk-in Customer" class="form-control" style="width: 100%;">
+                </div>
+
+                <div class="form-group mb-sm">
+                  <label class="form-label" for="sale-customer-phone">Phone Number</label>
+                  <input type="tel" id="sale-customer-phone" placeholder="e.g. 9876543210" class="form-control" style="width: 100%;">
                 </div>
 
                 <div class="form-group mb-sm">
@@ -342,6 +347,7 @@
                       <th>Invoice ID</th>
                       <th>Date</th>
                       <th>Customer Name</th>
+                      <th>Phone</th>
                       <th>Payment Mode</th>
                       <th>Status</th>
                       <th class="text-right">Total Amount</th>
@@ -1079,6 +1085,7 @@
               <div class="meta-row"><span>Invoice No:</span> <strong id="receipt-id">#INV-10023</strong></div>
               <div class="meta-row"><span>Date:</span> <strong id="receipt-date">May 22, 2026</strong></div>
               <div class="meta-row"><span>Customer:</span> <strong id="receipt-customer">Walk-in Customer</strong></div>
+              <div class="meta-row" id="receipt-phone-row"><span>Phone:</span> <strong id="receipt-phone">N/A</strong></div>
               <div class="meta-row"><span>Payment Mode:</span> <strong id="receipt-payment-mode">Cash</strong></div>
             </div>
             <div class="divider-dashed"></div>

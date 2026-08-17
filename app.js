@@ -717,6 +717,7 @@ function clearCart() {
   document.getElementById("cart-discount").value = 0;
   document.getElementById("cart-gst").value = 0;
   document.getElementById("sale-customer-name").value = "";
+  if (document.getElementById("sale-customer-phone")) document.getElementById("sale-customer-phone").value = "";
   renderCart();
   renderSalesPage();
   showToast("Cart cleared", "success");
@@ -727,6 +728,7 @@ async function handleCheckout() {
   if (cart.length === 0) return;
 
   const customerName = document.getElementById("sale-customer-name").value.trim() || "Walk-in Customer";
+  const customerPhone = document.getElementById("sale-customer-phone")?.value.trim() || "";
   const paymentMode = document.getElementById("sale-payment-mode").value || "Cash";
   const discountPct = parseFloat(document.getElementById("cart-discount").value) || 0;
   const gstPct = parseFloat(document.getElementById("cart-gst").value) || 0;
@@ -747,6 +749,7 @@ async function handleCheckout() {
     id: invId,
     date: saleDate,
     customer: customerName,
+    phone: customerPhone,
     paymentMode: paymentMode,
     paymentStatus: paymentMode === "Credit" ? "Unpaid" : "Paid",
     items: [...cart],
@@ -783,6 +786,7 @@ async function handleCheckout() {
     document.getElementById("cart-discount").value = 0;
     document.getElementById("cart-gst").value = 0;
     document.getElementById("sale-customer-name").value = "";
+    if (document.getElementById("sale-customer-phone")) document.getElementById("sale-customer-phone").value = "";
     
     // Re-render
     renderCart();
@@ -799,6 +803,7 @@ function showReceipt(sale) {
   document.getElementById("receipt-id").textContent = sale.id;
   document.getElementById("receipt-date").textContent = new Date(sale.date).toLocaleDateString() + " " + new Date(sale.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   document.getElementById("receipt-customer").textContent = sale.customer;
+  if (document.getElementById("receipt-phone")) document.getElementById("receipt-phone").textContent = sale.phone || 'N/A';
   const pmEl = document.getElementById("receipt-payment-mode");
   if (pmEl) pmEl.textContent = sale.paymentMode || "Cash";
 
@@ -1493,7 +1498,7 @@ function renderSalesLedger() {
   tbody.innerHTML = "";
   
   if (sales.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-md">No sales recorded yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-md">No sales recorded yet.</td></tr>`;
     return;
   }
   
@@ -1511,7 +1516,7 @@ function renderSalesLedger() {
   }
   
   if (sortedSales.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-md">No sales found for this filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-md">No sales found for this filter.</td></tr>`;
     return;
   }
   
@@ -1527,6 +1532,7 @@ function renderSalesLedger() {
       <td class="font-bold">${sale.id}</td>
       <td>${new Date(sale.date).toLocaleDateString()}</td>
       <td>${sale.customer}</td>
+      <td><span class="text-xs text-muted">${sale.phone || 'N/A'}</span></td>
       <td>${paymentMode}</td>
       <td><span class="status-badge ${statusClass}">${status}</span></td>
       <td class="text-right font-bold text-emerald">${formatCurrency(sale.total)}</td>
