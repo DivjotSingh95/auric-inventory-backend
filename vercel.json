@@ -1,8 +1,10 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://auric-inventory-backend.onrender.com/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://auric-inventory-backend.onrender.com/api/:path*"
     }
   ]
 }

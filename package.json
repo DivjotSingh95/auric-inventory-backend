@@ -2,10 +2,20 @@
   "name": "auric-inventory",
   "version": "1.0.0",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "build": "node scripts/build.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,2 +1,11 @@
 node_modules/
 .env
+
+.env.*
+!.env.example
+.vercel/
+backups/
+public/
+
+.vercel
+.env*

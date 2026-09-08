@@ -1,0 +1,6 @@
+.env*
+db.json
+test/
+backups/
+.git/
+node_modules/

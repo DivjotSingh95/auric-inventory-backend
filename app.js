@@ -10,11 +10,19 @@ window.fetch = async function() {
     const token = localStorage.getItem('auric_token');
     if(token) config.headers['authorization'] = token;
   }
-  const response = await originalFetch(resource, config);
-  if (response.status === 401 && !resource.includes('/api/login')) {
+  let response;
+  try {
+    response = await originalFetch(resource, config);
+  } catch (err) {
+    throw err;
+  }
+  if (response && response.status === 401 && !resource.includes('/api/login')) {
     localStorage.removeItem('auric_token');
     document.getElementById("app-container").style.display = "none";
     document.getElementById("login-container").style.display = "flex";
+    if (document.getElementById("global-loading-overlay")) {
+      document.getElementById("global-loading-overlay").remove();
+    }
     throw new Error('Unauthorized'); // Halt execution
   }
   return response;
@@ -45,21 +53,54 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   
+  // User is logged in. Hide login and app containers until data is ready.
   document.getElementById("login-container").style.display = "none";
-  document.getElementById("app-container").style.display = "flex";
+  document.getElementById("app-container").style.display = "none";
 
-  await loadData();
-  initRouting();
-  initTheme();
-  initEventListeners();
-  updateLiveDate();
-  
-  // Render current view
-  const currentHash = window.location.hash.substring(1) || 'dashboard';
-  navigateToSection(currentHash);
-  
-  // Refresh Lucide Icons once structural injections are complete
-  lucide.createIcons();
+  // Show Loading Overlay
+  const loadingOverlay = document.createElement("div");
+  loadingOverlay.id = "global-loading-overlay";
+  loadingOverlay.style = "position:fixed; inset:0; z-index:99999; background:var(--bg-main); display:flex; flex-direction:column; align-items:center; justify-content:center;";
+  loadingOverlay.innerHTML = `
+    <style>
+      @keyframes spin-anim { 100% { transform: rotate(360deg); } }
+      .spin-icon-custom { animation: spin-anim 1s linear infinite; }
+    </style>
+    <div style="margin-bottom: 2rem;">
+      <i data-lucide="loader-2" class="spin-icon-custom" style="width: 48px; height: 48px; color: var(--primary);"></i>
+    </div>
+    <h3 style="color: var(--text-main); font-weight: 600; margin-bottom: 0.5rem; font-family: 'Space Grotesk', sans-serif;">Connecting to Secure Server...</h3>
+    <p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; max-width: 320px; line-height: 1.5; font-family: 'Plus Jakarta Sans', sans-serif;">
+      Waking up the backend database. If the server was asleep, this may take up to 50 seconds.
+    </p>
+  `;
+  document.body.appendChild(loadingOverlay);
+  lucide.createIcons({root: loadingOverlay});
+
+  try {
+    await loadData();
+
+    // Success: remove loading and show app
+    if (document.getElementById("global-loading-overlay")) {
+      document.getElementById("global-loading-overlay").remove();
+    }
+    document.getElementById("app-container").style.display = "flex";
+
+    initRouting();
+    initTheme();
+    initEventListeners();
+    updateLiveDate();
+
+    // Render current view
+    const currentHash = window.location.hash.substring(1) || 'dashboard';
+    navigateToSection(currentHash);
+
+    // Refresh Lucide Icons once structural injections are complete
+    lucide.createIcons();
+  } catch (err) {
+    console.error("Boot error:", err);
+    // If it's a 401 unauthorized, the fetch interceptor already handles it.
+  }
 });
 
 // --- Theme Management ---
@@ -92,29 +133,46 @@ function getProductStock(p) {
 
 // --- LocalStorage Synchronization ---
 async function loadData() {
-  try {
-    const response = await fetch('https://auric-inventory-backend.onrender.com/api/data');
-    if (!response.ok) throw new Error('Network response was not ok');
-    const data = await response.json();
-    products = data.products || [];
-    sales = data.sales || [];
-    expenses = data.expenses || [];
-    vendors = data.vendors || [];
-    purchaseOrders = data.purchaseOrders || [];
-    vendorPayments = data.vendorPayments || [];
-    vendorReturns = data.vendorReturns || [];
-    borrowings = data.borrowings || [];
-  } catch (err) {
-    console.error("Failed to load data from backend:", err);
-    products = [];
-    sales = [];
-    expenses = [];
-    vendors = [];
-    purchaseOrders = [];
-    vendorPayments = [];
-    vendorReturns = [];
-    borrowings = [];
+  let retries = 10;
+  while (retries > 0) {
+    try {
+      const response = await fetch('/api/data');
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Unauthorized');
+        throw new Error('Network response was not ok: ' + response.status);
+      }
+      const data = await response.json();
+      products = data.products || [];
+      sales = data.sales || [];
+      expenses = data.expenses || [];
+      vendors = data.vendors || [];
+      purchaseOrders = data.purchaseOrders || [];
+      vendorPayments = data.vendorPayments || [];
+      vendorReturns = data.vendorReturns || [];
+      borrowings = data.borrowings || [];
+      updateGlobalStockAlerts();
+      return; // Success!
+    } catch (err) {
+      if (err.message === 'Unauthorized') throw err;
+      console.warn("Backend not ready or asleep, retrying in 5 seconds...", err);
+      retries--;
+      if (retries === 0) {
+        console.error("Failed to load data from backend after 10 retries.");
+        break;
+      }
+      await new Promise(r => setTimeout(r, 5000));
+    }
   }
+
+  // Exhausted retries
+  products = [];
+  sales = [];
+  expenses = [];
+  vendors = [];
+  purchaseOrders = [];
+  vendorPayments = [];
+  vendorReturns = [];
+  borrowings = [];
   updateGlobalStockAlerts();
 }
 
@@ -792,7 +850,7 @@ async function handleCheckout() {
   };
 
   try {
-    const response = await fetch('https://auric-inventory-backend.onrender.com/api/sales', {
+    const response = await fetch('/api/sales', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1197,7 +1255,7 @@ function renderBorrowingsPage() {
 async function writeOffBorrowing(id) {
   if(!confirm("Are you sure you want to write off/settle this borrowing? It will be marked as paid.")) return;
   try {
-    const response = await fetch('https://auric-inventory-backend.onrender.com/api/borrowings/' + id + '/writeoff', { method: 'POST' });
+    const response = await fetch('/api/borrowings/' + id + '/writeoff', { method: 'POST' });
     if(response.ok) {
       showToast("Borrowing settled successfully!", "success");
       await loadData();
@@ -1606,7 +1664,7 @@ function renderCustomerDebts() {
 async function settleCustomerDebt(id) {
   if(!confirm("Are you sure you want to mark this debt as PAID?")) return;
   try {
-    const response = await fetch('https://auric-inventory-backend.onrender.com/api/sales/' + id + '/settle', { method: 'POST' });
+    const response = await fetch('/api/sales/' + id + '/settle', { method: 'POST' });
     if(response.ok) {
       showToast("Debt settled successfully!", "success");
       await loadData();
@@ -1776,7 +1834,7 @@ function initEventListeners() {
     }
 
     try {
-      const response = await fetch('https://auric-inventory-backend.onrender.com/api/products', {
+      const response = await fetch('/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1832,7 +1890,7 @@ function initEventListeners() {
       updatedProduct.variants[varKey].stock = (updatedProduct.variants[varKey].stock || 0) + qty;
 
       try {
-        const response = await fetch('https://auric-inventory-backend.onrender.com/api/products', {
+        const response = await fetch('/api/products', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1873,7 +1931,7 @@ function initEventListeners() {
     };
 
     try {
-      const response = await fetch('https://auric-inventory-backend.onrender.com/api/borrowings', {
+      const response = await fetch('/api/borrowings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBorrowing)
@@ -1909,7 +1967,7 @@ function initEventListeners() {
     };
 
     try {
-      const response = await fetch('https://auric-inventory-backend.onrender.com/api/expenses', {
+      const response = await fetch('/api/expenses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -2010,7 +2068,7 @@ function initEventListeners() {
   document.getElementById("clear-all-data-btn").addEventListener("click", async () => {
     if (confirm("Are you sure you want to clear ALL products, sales history, and expenses? This will permanently delete everything and start fresh with an empty database.")) {
       try {
-        const response = await fetch('https://auric-inventory-backend.onrender.com/api/reset', {
+        const response = await fetch('/api/reset', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -2038,7 +2096,7 @@ function initEventListeners() {
   document.getElementById("restore-demo-data-btn").addEventListener("click", async () => {
     if (confirm("Are you sure you want to restore the preloaded clothing boutique demo data? This will overwrite your current products, sales, and expenses.")) {
       try {
-        const response = await fetch('https://auric-inventory-backend.onrender.com/api/reset', {
+        const response = await fetch('/api/reset', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -2248,8 +2306,8 @@ async function handleVendorSubmit(e) {
   };
   
   try {
-    const url = editId ? `/api/vendors/${editId}` : '/api/vendors';
-    const method = editId ? 'PUT' : 'POST';
+    const url = '/api/vendors';
+    const method = 'POST';
     const res = await fetch(url, {
       method: method,
       headers: { 'Content-Type': 'application/json' },
@@ -2431,7 +2489,7 @@ async function handlePOSubmit(e) {
   };
   
   try {
-    const res = await fetch('https://auric-inventory-backend.onrender.com/api/purchase-orders', {
+    const res = await fetch('/api/purchase-orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(poData)
@@ -2674,7 +2732,7 @@ function renderVendorLiabilities() {
 async function settleVendorPO(poNumber) {
   if(!confirm("Are you sure you want to log a payment and settle this Purchase Order?")) return;
   try {
-    const response = await fetch('https://auric-inventory-backend.onrender.com/api/purchase-orders/' + poNumber + '/settle', { method: 'POST' });
+    const response = await fetch('/api/purchase-orders/' + poNumber + '/settle', { method: 'POST' });
     if(response.ok) {
       showToast("Purchase Order settled successfully!", "success");
       await loadData();
@@ -2708,7 +2766,7 @@ async function handleVendorPaymentSubmit(e) {
   };
   
   try {
-    const res = await fetch('https://auric-inventory-backend.onrender.com/api/vendor-payments', {
+    const res = await fetch('/api/vendor-payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payData)
@@ -2788,7 +2846,7 @@ async function handleVendorReturnSubmit(e) {
   };
   
   try {
-    const res = await fetch('https://auric-inventory-backend.onrender.com/api/vendor-returns', {
+    const res = await fetch('/api/vendor-returns', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(retData)
@@ -2846,8 +2904,8 @@ async function handleVariantPriceSubmit(e) {
   
   try {
     const masterIdx = products.findIndex(mp => mp.sku === sku);
-    const res = await fetch(`/api/products/${masterIdx}`, {
-      method: 'PUT',
+    const res = await fetch('/api/products', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p)
     });
@@ -2872,7 +2930,7 @@ function initAuthListeners() {
       const username = document.getElementById('login-id').value.trim();
       const password = document.getElementById('login-password').value;
       try {
-        const res = await originalFetch('https://auric-inventory-backend.onrender.com/api/login', {
+        const res = await originalFetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
@@ -2911,13 +2969,14 @@ function initAuthListeners() {
       const newUsername = document.getElementById('settings-new-id').value.trim();
       const newPassword = document.getElementById('settings-new-pwd').value;
       try {
-        const res = await fetch('https://auric-inventory-backend.onrender.com/api/change-credentials', {
+        const res = await fetch('/api/change-credentials', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ oldPassword, newUsername, newPassword })
         });
         const data = await res.json();
         if (data.success) {
+          if (data.token) localStorage.setItem('auric_token', data.token);
           showToast("Credentials updated successfully!", "success");
           closeModal('settings-modal');
           settingsForm.reset();

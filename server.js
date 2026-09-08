@@ -1,13 +1,61 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const { createHmac, timingSafeEqual, randomBytes } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
+const path = require('node:path');
+const { createPool, createDatabase } = require('./database');
 
+function createApp(database) {
 const app = express();
 app.use(cors());
 app.use(express.json());
+const readDb = () => database.read();
+const writeDb = data => database.write(data);
 
-const dbPath = path.join(__dirname, 'db.json');
+function signature(payload, auth) {
+  return createHmac('sha256', auth.sessionSecret).update(payload).digest('base64url');
+}
+function issueToken(auth) {
+  const payload = Buffer.from(JSON.stringify({ expires: Date.now() + 30 * 86400000, nonce: randomBytes(16).toString('hex') })).toString('base64url');
+  return payload + '.' + signature(payload, auth);
+}
+function validToken(token, auth) {
+  if (!token || !auth?.sessionSecret) return false;
+  try {
+    const [payload, supplied, extra] = token.split('.');
+    if (extra !== undefined || !payload || !supplied) return false;
+    const expected = Buffer.from(signature(payload, auth));
+    const actual = Buffer.from(supplied);
+    return expected.length === actual.length && timingSafeEqual(expected, actual) && JSON.parse(Buffer.from(payload, 'base64url').toString()).expires > Date.now();
+  } catch { return false; }
+}
+function route(method, url, handler) {
+  app[method](url, async (req, res, next) => {
+    try {
+      const response = await database.run(method !== 'get', () => {
+        const reply = { statusCode: 200, body: undefined,
+          status(code) { this.statusCode = code; return this; },
+          json(body) { this.body = body; return this; }
+        };
+        if (url !== '/api/login' && !validToken(req.headers.authorization, readDb().auth)) {
+          return reply.status(401).json({ error: 'Unauthorized' });
+        }
+        handler(req, reply);
+        return reply;
+      });
+      // Only acknowledge a write after its database transaction commits.
+      res.status(response.statusCode).json(response.body);
+    } catch (error) { next(error); }
+  });
+}
+app.get('/api/health', async (req, res) => {
+  try {
+    await database.health();
+    res.json({ status: 'ok', database: 'supabase' });
+  } catch {
+    res.status(503).json({ status: 'unavailable', database: 'unavailable' });
+  }
+});
 
 const DEFAULT_PRODUCTS = [
   { sku: "SU-ANARKALI-01", name: "Anarkali Embroidered Silk Suit Set", category: "Suits", costPrice: 1200.00, sellingPrice: 2800.00, sizes: { S: 2, M: 3, L: 2, XL: 1, XXL: 0 }, threshold: 3 },
@@ -63,42 +111,18 @@ const DEFAULT_EXPENSES = [
   { id: "EXP-103", date: "2026-05-08", category: "Utilities", desc: "High-power AC Electricity Bill", amount: 8900.00 }
 ];
 
-function readDb() {
-  try {
-    if (fs.existsSync(dbPath)) {
-      const raw = fs.readFileSync(dbPath, 'utf8');
-      const data = JSON.parse(raw);
-      data.vendors = data.vendors || [];
-      data.purchaseOrders = data.purchaseOrders || [];
-      data.vendorPayments = data.vendorPayments || [];
-      data.vendorReturns = data.vendorReturns || [];
-      data.borrowings = data.borrowings || [];
-      data.auth = data.auth || { username: "admin", password: "password" }; // Default password is password because the user is going to change it anyways, but I will set it to auric123 since I said that in the plan
-      data.auth.password = data.auth.password === "password" ? "auric123" : data.auth.password; // Backwards compatible fix
-      return data;
-    }
-  } catch (err) {
-    console.error("Error reading database:", err);
-  }
-  return { products: [], sales: [], expenses: [], vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [], auth: { username: "admin", password: "auric123" } };
-}
-
-function writeDb(data) {
-  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-}
-
 // AUTH ENDPOINTS
-app.post('/api/login', (req, res) => {
+route('post', '/api/login', (req, res) => {
   const { username, password } = req.body;
   const db = readDb();
   if (db.auth.username === username && db.auth.password === password) {
-    res.json({ success: true, token: "AURIC_AUTH_TOKEN_V1" });
+    res.json({ success: true, token: issueToken(db.auth) });
   } else {
     res.status(401).json({ error: "Invalid credentials" });
   }
 });
 
-app.post('/api/change-credentials', (req, res) => {
+route('post', '/api/change-credentials', (req, res) => {
   const { oldPassword, newUsername, newPassword } = req.body;
   const db = readDb();
   if (db.auth.password !== oldPassword) {
@@ -106,34 +130,24 @@ app.post('/api/change-credentials', (req, res) => {
   }
   db.auth.username = newUsername || db.auth.username;
   db.auth.password = newPassword || db.auth.password;
+  db.auth.sessionSecret = randomBytes(32).toString('hex');
   writeDb(db);
-  res.json({ success: true });
-});
-
-// AUTH MIDDLEWARE
-app.use('/api/', (req, res, next) => {
-  if (req.path === '/login' || req.method === 'OPTIONS') {
-    return next();
-  }
-  const token = req.headers['authorization'];
-  if (token !== "AURIC_AUTH_TOKEN_V1") {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
+  res.json({ success: true, token: issueToken(db.auth) });
 });
 
 // 1. GET /api/data
-app.get('/api/data', (req, res) => {
-  res.json(readDb());
+route('get', '/api/data', (req, res) => {
+  const { auth, ...data } = readDb();
+  res.json(data);
 });
 
 // 2. GET /api/products
-app.get('/api/products', (req, res) => {
+route('get', '/api/products', (req, res) => {
   res.json(readDb().products);
 });
 
 // 3. POST /api/products
-app.post('/api/products', (req, res) => {
+route('post', '/api/products', (req, res) => {
   if (!req.body.sku) return res.status(400).json({error: "SKU required"});
   const db = readDb();
   const idx = db.products.findIndex(p => p.sku === req.body.sku);
@@ -144,7 +158,7 @@ app.post('/api/products', (req, res) => {
 });
 
 // 4. DELETE /api/products/:sku
-app.delete('/api/products/:sku', (req, res) => {
+route('delete', '/api/products/:sku', (req, res) => {
   const db = readDb();
   const idx = db.products.findIndex(p => p.sku === req.params.sku);
   if (idx !== -1) {
@@ -156,16 +170,30 @@ app.delete('/api/products/:sku', (req, res) => {
 });
 
 // 5. GET /api/sales
-app.get('/api/sales', (req, res) => {
+route('get', '/api/sales', (req, res) => {
   res.json(readDb().sales);
 });
 
 // 6. POST /api/sales
-app.post('/api/sales', (req, res) => {
+route('post', '/api/sales', (req, res) => {
   const db = readDb();
   const sale = req.body;
-  // Validate stock
+  if (!sale.id || !Array.isArray(sale.items) || !sale.items.length || sale.items.some(item => !Number.isInteger(item.qty) || item.qty <= 0)) {
+    return res.status(400).json({ error: 'A sale ID and positive whole-number item quantities are required' });
+  }
+  const existing = db.sales.find(item => item.id === sale.id);
+  if (existing) {
+    if (isDeepStrictEqual(existing, sale)) return res.json({ success: true, sale: existing });
+    return res.status(409).json({ error: 'Invoice ID already exists' });
+  }
+  const requested = new Map();
   for (const item of sale.items) {
+    const key = JSON.stringify([item.sku, item.color || '', item.size]);
+    const previous = requested.get(key);
+    requested.set(key, { ...item, qty: (previous?.qty || 0) + item.qty });
+  }
+  // Validate stock
+  for (const item of requested.values()) {
     const product = db.products.find(p => p.sku === item.sku);
     if (!product) return res.status(400).json({error: `Product SKU ${item.sku} not found`});
     
@@ -178,6 +206,8 @@ app.post('/api/sales', (req, res) => {
       if ((product.sizes[item.size] || 0) < item.qty) {
         return res.status(400).json({error: `Insufficient stock`});
       }
+    } else {
+      return res.status(400).json({ error: 'Product has no stock for the selected size' });
     }
   }
   
@@ -201,12 +231,12 @@ app.post('/api/sales', (req, res) => {
 });
 
 // 7. GET /api/expenses
-app.get('/api/expenses', (req, res) => {
+route('get', '/api/expenses', (req, res) => {
   res.json(readDb().expenses);
 });
 
 // 8. POST /api/expenses
-app.post('/api/expenses', (req, res) => {
+route('post', '/api/expenses', (req, res) => {
   const db = readDb();
   db.expenses.push(req.body);
   writeDb(db);
@@ -214,7 +244,7 @@ app.post('/api/expenses', (req, res) => {
 });
 
 // 9. DELETE /api/expenses/:id
-app.delete('/api/expenses/:id', (req, res) => {
+route('delete', '/api/expenses/:id', (req, res) => {
   const db = readDb();
   const idx = db.expenses.findIndex(e => e.id === req.params.id);
   if (idx !== -1) {
@@ -226,12 +256,12 @@ app.delete('/api/expenses/:id', (req, res) => {
 });
 
 // 10. GET /api/vendors
-app.get('/api/vendors', (req, res) => {
+route('get', '/api/vendors', (req, res) => {
   res.json(readDb().vendors || []);
 });
 
 // 11. POST /api/vendors
-app.post('/api/vendors', (req, res) => {
+route('post', '/api/vendors', (req, res) => {
   const db = readDb();
   const vendor = req.body;
   const idx = db.vendors.findIndex(v => v.id === vendor.id);
@@ -242,7 +272,7 @@ app.post('/api/vendors', (req, res) => {
 });
 
 // 12. DELETE /api/vendors/:id
-app.delete('/api/vendors/:id', (req, res) => {
+route('delete', '/api/vendors/:id', (req, res) => {
   const db = readDb();
   const idx = db.vendors.findIndex(v => v.id === req.params.id);
   if (idx !== -1) {
@@ -254,23 +284,27 @@ app.delete('/api/vendors/:id', (req, res) => {
 });
 
 // 13. GET /api/purchase-orders
-app.get('/api/purchase-orders', (req, res) => {
+route('get', '/api/purchase-orders', (req, res) => {
   res.json(readDb().purchaseOrders || []);
 });
 
 // 14. POST /api/purchase-orders
-app.post('/api/purchase-orders', (req, res) => {
+route('post', '/api/purchase-orders', (req, res) => {
   const db = readDb();
   const po = req.body;
+  po.poNumber = po.poNumber || po.id;
+  po.id = po.id || po.poNumber;
+  po.date = po.date || po.orderDate;
+  if (!po.poNumber) return res.status(400).json({ error: 'Purchase order ID required' });
   const idx = db.purchaseOrders.findIndex(p => p.poNumber === po.poNumber);
   if (idx !== -1) {
     db.purchaseOrders[idx] = po;
   } else {
     db.purchaseOrders.push(po);
-    const vendor = db.vendors.find(v => v.id === po.vendorId);
+    const vendor = db.vendors.find(v => v.id === po.vendorId || v.name === po.vendorName);
     if (vendor && po.status !== 'Draft') {
       vendor.totalPurchased = (vendor.totalPurchased || 0) + (po.totalAmount || 0);
-      if (vendor.paymentTerms && vendor.paymentTerms.toLowerCase().includes('credit')) {
+      if ((vendor.paymentTerms || vendor.terms || '').toLowerCase().includes('credit')) {
         vendor.outstanding = (vendor.outstanding || 0) + (po.totalAmount || 0);
       } else {
         vendor.totalPaid = (vendor.totalPaid || 0) + (po.totalAmount || 0);
@@ -282,20 +316,35 @@ app.post('/api/purchase-orders', (req, res) => {
 });
 
 // 15. PUT /api/purchase-orders/:poNumber/receive
-app.put('/api/purchase-orders/:poNumber/receive', (req, res) => {
+route('put', '/api/purchase-orders/:poNumber/receive', (req, res) => {
   const db = readDb();
   const { receivedItems, status } = req.body;
-  const po = db.purchaseOrders.find(p => p.poNumber === req.params.poNumber);
+  const po = db.purchaseOrders.find(p => (p.poNumber || p.id) === req.params.poNumber);
   if (!po) return res.status(404).json({error: "PO not found"});
   
   if (receivedItems && Array.isArray(receivedItems)) {
+    for (const rec of receivedItems) {
+      rec.newlyReceived = rec.newlyReceived ?? rec.receivedQty;
+      const item = po.items.find(i => i.sku === rec.sku && i.color === rec.color && i.size === rec.size);
+      if (!item || !Number.isInteger(rec.newlyReceived) || rec.newlyReceived <= 0 || rec.newlyReceived > item.qty - (item.qtyReceived ?? item.received ?? 0)) {
+        return res.status(400).json({ error: 'Invalid received quantity' });
+      }
+    }
     receivedItems.forEach(rec => {
       const poItem = po.items.find(i => i.sku === rec.sku && i.color === rec.color && i.size === rec.size);
-      if (poItem) poItem.qtyReceived = (poItem.qtyReceived || 0) + rec.newlyReceived;
+      if (poItem) {
+        poItem.qtyReceived = (poItem.qtyReceived ?? poItem.received ?? 0) + rec.newlyReceived;
+        poItem.received = poItem.qtyReceived;
+      }
       const prod = db.products.find(p => p.sku === rec.sku);
       if (prod) {
         const varKey = `${rec.color}-${rec.size}`;
-        if (!prod.variants) prod.variants = {};
+        if (!prod.variants) {
+          prod.variants = {};
+          for (const [size, stock] of Object.entries(prod.sizes || {})) {
+            prod.variants[`Standard-${size}`] = { stock, costPrice: prod.costPrice, sellingPrice: prod.sellingPrice };
+          }
+        }
         if (!prod.variants[varKey]) {
           prod.variants[varKey] = { stock: 0, costPrice: rec.wholesaleCost || prod.costPrice, sellingPrice: prod.sellingPrice };
         }
@@ -310,16 +359,16 @@ app.put('/api/purchase-orders/:poNumber/receive', (req, res) => {
 });
 
 // 16. GET /api/vendor-payments
-app.get('/api/vendor-payments', (req, res) => {
+route('get', '/api/vendor-payments', (req, res) => {
   res.json(readDb().vendorPayments || []);
 });
 
 // 17. POST /api/vendor-payments
-app.post('/api/vendor-payments', (req, res) => {
+route('post', '/api/vendor-payments', (req, res) => {
   const db = readDb();
   const pay = req.body;
   db.vendorPayments.push(pay);
-  const vendor = db.vendors.find(v => v.id === pay.vendorId);
+  const vendor = db.vendors.find(v => v.id === pay.vendorId || v.name === pay.vendorName);
   if (vendor) {
     vendor.totalPaid = (vendor.totalPaid || 0) + pay.amount;
     vendor.outstanding = Math.max(0, (vendor.outstanding || 0) - pay.amount);
@@ -329,12 +378,12 @@ app.post('/api/vendor-payments', (req, res) => {
 });
 
 // 18. GET /api/vendor-returns
-app.get('/api/vendor-returns', (req, res) => {
+route('get', '/api/vendor-returns', (req, res) => {
   res.json(readDb().vendorReturns || []);
 });
 
 // 19. POST /api/vendor-returns
-app.post('/api/vendor-returns', (req, res) => {
+route('post', '/api/vendor-returns', (req, res) => {
   const db = readDb();
   const ret = req.body;
   db.vendorReturns.push(ret);
@@ -352,7 +401,8 @@ app.post('/api/vendor-returns', (req, res) => {
       }
     });
   }
-  const vendor = db.vendors.find(v => v.id === ret.vendorId);
+  ret.creditAmount = ret.creditAmount ?? ret.creditNoteAmount;
+  const vendor = db.vendors.find(v => v.id === ret.vendorId || v.name === ret.vendorName);
   if (vendor && ret.creditAmount) {
     vendor.outstanding = Math.max(0, (vendor.outstanding || 0) - ret.creditAmount);
   }
@@ -361,7 +411,7 @@ app.post('/api/vendor-returns', (req, res) => {
 });
 
 // 20. POST /api/sales/:id/settle
-app.post('/api/sales/:id/settle', (req, res) => {
+route('post', '/api/sales/:id/settle', (req, res) => {
   const db = readDb();
   const sale = db.sales.find(s => s.id === req.params.id);
   if (!sale) return res.status(404).json({error: "Sale not found"});
@@ -371,10 +421,11 @@ app.post('/api/sales/:id/settle', (req, res) => {
 });
 
 // 21. POST /api/purchase-orders/:poNumber/settle
-app.post('/api/purchase-orders/:poNumber/settle', (req, res) => {
+route('post', '/api/purchase-orders/:poNumber/settle', (req, res) => {
   const db = readDb();
-  const po = db.purchaseOrders.find(p => p.poNumber === req.params.poNumber);
+  const po = db.purchaseOrders.find(p => (p.poNumber || p.id) === req.params.poNumber);
   if (!po) return res.status(404).json({error: "PO not found"});
+  if (po.paymentStatus === 'Paid') return res.json({ success: true, po });
   po.paymentStatus = "Paid";
   const paymentRecord = {
     id: "PAY-" + Math.floor(10000 + Math.random() * 90000),
@@ -396,7 +447,7 @@ app.post('/api/purchase-orders/:poNumber/settle', (req, res) => {
 });
 
 // 22. POST /api/borrowings
-app.post('/api/borrowings', (req, res) => {
+route('post', '/api/borrowings', (req, res) => {
   const db = readDb();
   db.borrowings.push(req.body);
   writeDb(db);
@@ -404,7 +455,7 @@ app.post('/api/borrowings', (req, res) => {
 });
 
 // 23. POST /api/borrowings/:id/writeoff
-app.post('/api/borrowings/:id/writeoff', (req, res) => {
+route('post', '/api/borrowings/:id/writeoff', (req, res) => {
   const db = readDb();
   const b = db.borrowings.find(b => b.id === req.params.id);
   if (!b) return res.status(404).json({error: "not found"});
@@ -414,14 +465,43 @@ app.post('/api/borrowings/:id/writeoff', (req, res) => {
 });
 
 // 24. POST /api/reset
-app.post('/api/reset', (req, res) => {
+route('post', '/api/reset', (req, res) => {
+  const auth = readDb().auth;
   if (req.body.type === 'clear') {
-    writeDb({ products: [], sales: [], expenses: [], vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [] });
+    writeDb({ products: [], sales: [], expenses: [], vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [], auth });
   } else if (req.body.type === 'restore') {
-    writeDb({ products: DEFAULT_PRODUCTS, sales: DEFAULT_SALES, expenses: DEFAULT_EXPENSES, vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [] });
+    writeDb({ products: DEFAULT_PRODUCTS, sales: DEFAULT_SALES, expenses: DEFAULT_EXPENSES, vendors: [], purchaseOrders: [], vendorPayments: [], vendorReturns: [], borrowings: [], auth });
+  } else {
+    return res.status(400).json({ error: 'Invalid reset type' });
   }
-  res.json(readDb());
+  const { auth: privateAuth, ...data } = readDb();
+  res.json(data);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
+// Serve only the three public assets, never database exports or server files.
+for (const [url, file] of [['/', 'index.html'], ['/index.html', 'index.html'], ['/app.js', 'app.js'], ['/style.css', 'style.css']]) {
+  app.get(url, (req, res) => res.sendFile(path.join(__dirname, file)));
+}
+app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint not found' }));
+app.use((error, req, res, next) => {
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON request' });
+  console.error('Request failed:', error.code || 'DATABASE_ERROR');
+  res.status(503).json({ error: 'Database unavailable. Your changes were not saved; please retry.' });
+});
+return app;
+}
+
+if (require.main === module) {
+  try {
+    const database = createDatabase(createPool());
+    const app = createApp(database);
+    const server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log('Auric backend listening'));
+    const shutdown = () => server.close(() => database.close().finally(() => process.exit(0)));
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+module.exports = { createApp };
