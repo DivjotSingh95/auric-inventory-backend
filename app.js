@@ -28,6 +28,32 @@ window.fetch = async function() {
   return response;
 };
 
+// Coalesce nested renders and only replace new icon placeholders. Lucide also
+// matches its generated SVGs by default, so full-page refreshes rebuilt the sidebar.
+const pendingIconRoots = new Set();
+let iconRefreshQueued = false;
+function refreshIcons(root = document) {
+  pendingIconRoots.add(root);
+  if (iconRefreshQueued) return;
+  iconRefreshQueued = true;
+  queueMicrotask(() => {
+    iconRefreshQueued = false;
+    const roots = pendingIconRoots.has(document) ? [document] : [...pendingIconRoots];
+    pendingIconRoots.clear();
+    for (const scope of roots) {
+      const placeholders = scope.querySelectorAll('i[data-lucide]');
+      if (!placeholders.length) continue;
+      for (const icon of placeholders) {
+        icon.setAttribute('data-lucide-pending', icon.getAttribute('data-lucide'));
+      }
+      lucide.createIcons({ root: scope, nameAttr: 'data-lucide-pending' });
+      for (const icon of scope.querySelectorAll('[data-lucide-pending]')) {
+        icon.removeAttribute('data-lucide-pending');
+      }
+    }
+  });
+}
+
 // --- State Variables ---
 let products = [];
 let sales = [];
@@ -41,6 +67,7 @@ let borrowings = [];
 
 // Charts Instances
 let revenueChart = null;
+let revenueChartState = null;
 let expenseDoughnutChart = null;
 
 // --- Initialize App ---
@@ -75,7 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     </p>
   `;
   document.body.appendChild(loadingOverlay);
-  lucide.createIcons({root: loadingOverlay});
+  refreshIcons(loadingOverlay);
 
   try {
     await loadData();
@@ -96,7 +123,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     navigateToSection(currentHash);
 
     // Refresh Lucide Icons once structural injections are complete
-    lucide.createIcons();
+    refreshIcons();
   } catch (err) {
     console.error("Boot error:", err);
     // If it's a 401 unauthorized, the fetch interceptor already handles it.
@@ -117,6 +144,7 @@ function initTheme() {
     
     // Rerender charts to update grid color schema
     renderCharts();
+    if (document.getElementById('reports').classList.contains('active')) renderReportsPage();
   });
 }
 
@@ -211,28 +239,22 @@ function initRouting() {
 }
 
 function navigateToSection(targetId) {
-  // Hide all sections
-  document.querySelectorAll(".page-section").forEach(sec => {
-    sec.classList.remove("active");
-  });
-  
-  // Remove active class from links
-  document.querySelectorAll(".nav-link").forEach(link => {
-    link.classList.remove("active");
-  });
-  
-  // Show target section
   const targetSection = document.getElementById(targetId);
-  if (targetSection) {
-    targetSection.classList.add("active");
+  if (!targetSection || !targetSection.classList.contains('page-section')) {
+    return navigateToSection('dashboard');
   }
-  
-  // Set active nav link
+  const previousSection = document.querySelector('.page-section.active');
+  if (previousSection !== targetSection) {
+    previousSection?.classList.remove('active');
+    targetSection.classList.add('active');
+  }
+  const previousLink = document.querySelector('.nav-link.active');
   const matchingLink = document.querySelector(`.nav-link[data-target="${targetId}"]`);
-  if (matchingLink) {
-    matchingLink.classList.add("active");
+  if (previousLink !== matchingLink) {
+    previousLink?.classList.remove('active');
+    matchingLink?.classList.add('active');
   }
-  
+
   // Update header text based on page
   const titleEl = document.getElementById("page-title");
   const subtitleEl = document.getElementById("page-subtitle");
@@ -312,7 +334,7 @@ function navigateToSection(targetId) {
       break;
   }
   
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function updateLiveDate() {
@@ -469,11 +491,12 @@ function renderCharts() {
 
   // Chart 1: Revenue vs Expenses (Monthly)
   const ctx = document.getElementById("salesExpensesChart");
-  if (!ctx) return;
-  
-  if (revenueChart) {
-    revenueChart.destroy();
+  if (!ctx || !document.getElementById('dashboard').classList.contains('active')) return;
+  if (revenueChart && revenueChartState?.sales === sales && revenueChartState?.expenses === expenses && revenueChartState?.isDark === isDark) {
+    revenueChart.resize();
+    return;
   }
+  revenueChartState = { sales, expenses, isDark };
 
   const months = ["Dec", "Jan", "Feb", "Mar", "Apr", "May"];
   const revData = [0, 0, 0, 0, 0, 0];
@@ -497,6 +520,17 @@ function renderCharts() {
       expData[idx] += e.amount;
     }
   });
+
+  if (revenueChart) {
+    revenueChart.data.datasets[0].data = revData;
+    revenueChart.data.datasets[1].data = expData;
+    revenueChart.options.scales.y.grid.color = gridColor;
+    revenueChart.options.scales.y.ticks.color = textColor;
+    revenueChart.options.scales.x.ticks.color = textColor;
+    revenueChart.resize();
+    revenueChart.update('none');
+    return;
+  }
 
   // Gradient definitions
   const ctx2d = ctx.getContext('2d');
@@ -540,6 +574,8 @@ function renderCharts() {
       ]
     },
     options: {
+      animation: false,
+      resizeDelay: 80,
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -615,7 +651,7 @@ function renderSalesPage() {
   }
   
   renderCart();
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function renderCart() {
@@ -632,7 +668,7 @@ function renderCart() {
     document.getElementById("cart-subtotal").textContent = "₹0.00";
     document.getElementById("cart-total").textContent = "₹0.00";
     checkoutBtn.disabled = true;
-    lucide.createIcons();
+    refreshIcons();
     return;
   }
 
@@ -1049,7 +1085,7 @@ function renderStockPage() {
     tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No stock items found matching current filters.</td></tr>`;
   }
 
-  lucide.createIcons();
+  refreshIcons();
 }
 
 // --- Render Dedicated Low Stock Page (NEW) ---
@@ -1111,7 +1147,7 @@ function renderLowStockPage() {
     tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No low stock items found matching current filters.</td></tr>`;
   }
 
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function populateProductVendorSelect(selectedVal = "") {
@@ -1303,7 +1339,7 @@ function renderExpensesPage() {
     tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">No expense items logged.</td></tr>`;
   }
 
-  lucide.createIcons();
+  refreshIcons();
 }
 
 async function deleteExpense(masterIdx) {
@@ -1442,16 +1478,12 @@ function renderReportsPage() {
   });
 
   renderExpensesDoughnutChart(expenseCategories, expenseDistribution);
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function renderExpensesDoughnutChart(labels, data) {
   const ctx = document.getElementById("expenseDistributionChart");
   if (!ctx) return;
-
-  if (expenseDoughnutChart) {
-    expenseDoughnutChart.destroy();
-  }
 
   const total = data.reduce((s, val) => s + val, 0);
   const displayData = total === 0 ? [1] : data;
@@ -1462,6 +1494,19 @@ function renderExpensesDoughnutChart(labels, data) {
 
   const isDark = document.documentElement.getAttribute("data-theme") === "dark";
   const labelColor = isDark ? "#a3a3a3" : "#78716c";
+
+  if (expenseDoughnutChart) {
+    expenseDoughnutChart.data.labels = displayLabels;
+    const dataset = expenseDoughnutChart.data.datasets[0];
+    dataset.data = displayData;
+    dataset.backgroundColor = displayColors;
+    dataset.borderWidth = isDark ? 2 : 1;
+    dataset.borderColor = isDark ? '#0d0d0d' : '#ffffff';
+    expenseDoughnutChart.options.plugins.legend.labels.color = labelColor;
+    expenseDoughnutChart.resize();
+    expenseDoughnutChart.update('none');
+    return;
+  }
 
   expenseDoughnutChart = new Chart(ctx, {
     type: 'doughnut',
@@ -1475,6 +1520,8 @@ function renderExpensesDoughnutChart(labels, data) {
       }]
     },
     options: {
+      animation: false,
+      resizeDelay: 80,
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -1628,7 +1675,7 @@ function renderSalesLedger() {
     `;
     tbody.appendChild(row);
   });
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function renderCustomerDebts() {
@@ -1658,7 +1705,7 @@ function renderCustomerDebts() {
     `;
     tbody.appendChild(row);
   });
-  lucide.createIcons();
+  refreshIcons();
 }
 
 async function settleCustomerDebt(id) {
@@ -1757,15 +1804,16 @@ function initEventListeners() {
   // Generic Tab Listeners for vv-tabs
   document.querySelectorAll(".vv-tab-btn").forEach(btn => {
     btn.addEventListener("click", (e) => {
-      if (e.target.hasAttribute("onclick")) return; // Skip if it has an inline onclick like Vendor Vault tabs
+      const button = e.currentTarget;
+      if (button.hasAttribute("onclick")) return; // Skip if it has an inline onclick like Vendor Vault tabs
       
-      const section = e.target.closest('.page-section');
+      const section = button.closest('.page-section');
       if(section) {
         section.querySelectorAll(".vv-tab-btn").forEach(b => b.classList.remove("active"));
         section.querySelectorAll(".vv-tab-content").forEach(c => c.classList.remove("active"));
         
-        e.target.classList.add("active");
-        const targetId = e.target.getAttribute("data-tab");
+        button.classList.add("active");
+        const targetId = button.getAttribute("data-tab");
         if(targetId) {
           const tabContent = document.getElementById(targetId);
           if(tabContent) tabContent.classList.add("active");
@@ -2157,12 +2205,12 @@ function showToast(message, type = "success") {
   `;
 
   container.appendChild(toast);
-  lucide.createIcons();
+  refreshIcons();
 
   setTimeout(() => {
     toast.style.opacity = "0";
     toast.style.transform = "translateY(15px)";
-    toast.style.transition = "all 0.3s ease";
+    toast.style.transition = "opacity 0.18s ease, transform 0.18s ease";
     setTimeout(() => {
       if (toast.parentNode) {
         container.removeChild(toast);
@@ -2201,7 +2249,7 @@ function renderVendorVault() {
   else if (currentVendorTab === "performance") renderVendorPerformance();
   else if (currentVendorTab === "liabilities") renderVendorLiabilities();
   else if (currentVendorTab === "returns") renderVendorReturns();
-  lucide.createIcons();
+  refreshIcons();
 }
 
 // --- 1. Vendor Directory CRUD ---
@@ -2240,7 +2288,7 @@ function renderVendorDirectory() {
   } else {
     body.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No suppliers found in directory. Click "Add Supplier" to create one.</td></tr>`;
   }
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function resetVendorForm() {
@@ -2364,7 +2412,7 @@ function renderPOList() {
   } else {
     body.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No Purchase Orders issued yet. Click "Create Purchase Order" to begin.</td></tr>`;
   }
-  lucide.createIcons();
+  refreshIcons();
 }
 
 function openCreatePOModal() {
@@ -2468,7 +2516,7 @@ function renderPOGrid() {
     grid.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No items added to PO yet. Use selector above to add garment variants.</td></tr>`;
   }
   totalEl.textContent = formatCurrency(grandTotal);
-  lucide.createIcons();
+  refreshIcons();
 }
 
 async function handlePOSubmit(e) {
