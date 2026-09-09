@@ -112,7 +112,7 @@ function updateCartTotals(source) {
   document.getElementById('checkout-btn').disabled = !cart.length || !!pricing.error;
   if (pricing.error) return pricing;
   document.getElementById('cart-subtotal').textContent = formatCurrency(pricing.subtotal);
-  if (cartPricingMode === 'final') discountInput.value = String(Number(pricing.discountPct.toFixed(6)));
+  if (cartPricingMode === 'final') discountInput.value = String(Number(pricing.discountPct.toFixed(2)));
   else finalInput.value = pricing.total.toFixed(2);
   return pricing;
 }

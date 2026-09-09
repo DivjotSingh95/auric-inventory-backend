@@ -138,7 +138,7 @@ test('discount and final price calculate each other with the selected GST', () =
   f.node('cart-gst').value = '18';
   f.node('cart-gst').listeners.change();
   assert.equal(f.node('cart-final-price').value, '840');
-  assert.ok(Math.abs(Number(f.node('cart-discount').value) - 28.814) < 0.000001);
+  assert.equal(f.node('cart-discount').value, '28.81');
   f.node('cart-discount').value = '25';
   f.node('cart-discount').listeners.input();
   assert.equal(f.node('cart-final-price').value, '885.00');
