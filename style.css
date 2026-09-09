@@ -1153,7 +1153,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
   box-shadow: var(--shadow-lg);
 }
 
@@ -1162,8 +1164,9 @@ body {
 }
 
 .cart-items {
-  flex-grow: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -1251,6 +1254,7 @@ body {
 }
 
 .cart-summary {
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   border-top: 1px solid var(--border-color);
   padding: 1.25rem;
@@ -1266,9 +1270,25 @@ body {
 }
 
 .discount-input {
-  width: 60px;
+  width: 90px;
   padding: 0.25rem 0.4rem;
   text-align: center;
+}
+
+.cart-panel > .card-header {
+  flex-shrink: 0;
+}
+
+.final-price-input {
+  width: 140px;
+  text-align: right;
+}
+
+@media (max-width: 1024px) {
+  .sales-workspace .cart-panel,
+  .sales-workspace .product-selector-panel {
+    height: auto;
+  }
 }
 
 

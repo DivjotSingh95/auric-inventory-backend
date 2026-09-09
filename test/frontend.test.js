@@ -117,3 +117,91 @@ test('new product form sends all eight sizes and creates their stock variants', 
     assert.equal(f.requests[0].body.variants['Standard-' + size].stock, stock);
   }
 });
+
+function cartFixture() {
+  const f = productFormFixture();
+  f.run("refreshIcons = () => {}; showReceipt = () => {}; renderSalesPage = () => {}; cart = [{ sku: 'TEST', name: 'Test product', size: '5XL', price: 1000, cost: 500, qty: 1 }];");
+  f.node('cart-discount').value = '0';
+  f.node('cart-gst').value = '5';
+  f.run('renderCart()');
+  return f;
+}
+
+test('discount and final price calculate each other with the selected GST', () => {
+  const f = cartFixture();
+  f.node('cart-discount').value = '10';
+  f.node('cart-discount').listeners.input();
+  assert.equal(f.node('cart-final-price').value, '945.00');
+  f.node('cart-final-price').value = '840';
+  f.node('cart-final-price').listeners.input();
+  assert.equal(f.node('cart-discount').value, '20');
+  f.node('cart-gst').value = '18';
+  f.node('cart-gst').listeners.change();
+  assert.equal(f.node('cart-final-price').value, '840');
+  assert.ok(Math.abs(Number(f.node('cart-discount').value) - 28.814) < 0.000001);
+  f.node('cart-discount').value = '25';
+  f.node('cart-discount').listeners.input();
+  assert.equal(f.node('cart-final-price').value, '885.00');
+});
+
+test('manual price stays exact on navigation and the existing checkout payload uses it', async () => {
+  const f = cartFixture();
+  f.node('cart-final-price').value = '899.99';
+  f.node('cart-final-price').listeners.input();
+  f.run('renderCart()');
+  assert.equal(f.node('cart-final-price').value, '899.99');
+  await f.run('handleCheckout()');
+  assert.equal(f.requests[0].url, '/api/sales');
+  const sale = f.requests[0].body;
+  assert.equal(sale.total, 899.99);
+  assert.equal(sale.gstAmount, 42.86);
+  assert.equal(sale.subtotal, 1000);
+  assert.equal(sale.items[0].price, 1000);
+  assert.ok(Math.abs(sale.discount - 14.287) < 0.000001);
+  assert.equal(f.node('cart-final-price').value, '0.00');
+  assert.equal(f.node('checkout-btn').disabled, true);
+});
+
+test('invalid prices and discounts block checkout without sending a sale', async () => {
+  const f = cartFixture();
+  for (const price of ['', '-1', '1050.01', 'NaN', '1.001']) {
+    f.node('cart-final-price').value = price;
+    f.node('cart-final-price').listeners.input();
+    assert.equal(f.node('checkout-btn').disabled, true);
+    await f.run('handleCheckout()');
+  }
+  for (const discount of ['', '-1', '101', 'NaN']) {
+    f.node('cart-discount').value = discount;
+    f.node('cart-discount').listeners.input();
+    assert.equal(f.node('checkout-btn').disabled, true);
+  }
+  assert.equal(f.requests.length, 0);
+  f.node('cart-final-price').value = '0';
+  f.node('cart-final-price').listeners.input();
+  assert.equal(f.node('cart-discount').value, '100');
+  assert.equal(f.node('checkout-btn').disabled, false);
+});
+
+test('quantity changes recalculate the price and clearing removes manual pricing', () => {
+  const f = cartFixture();
+  f.node('cart-final-price').value = '840';
+  f.node('cart-final-price').listeners.input();
+  f.run('cart[0].qty = 2; renderCart()');
+  assert.equal(f.node('cart-final-price').value, '1680.00');
+  f.run('clearCart()');
+  assert.equal(f.node('cart-final-price').value, '0.00');
+  assert.equal(f.node('cart-discount').value, '0');
+  assert.equal(f.node('cart-final-price').disabled, true);
+});
+
+test('GST calculations stay consistent across 0%, 5% and 18% with multiple products', () => {
+  const f = cartFixture();
+  for (const gst of [0, 5, 18]) {
+    const pricing = f.run(`calculateCartPricing([{ price: 499.99, qty: 2 }, { price: 250, qty: 1 }], 12.5, ${gst})`);
+    assert.equal(pricing.subtotal, 1249.98);
+    assert.equal(pricing.total, Math.round((1093.73 + pricing.gstVal) * 100) / 100);
+    const reversed = f.run(`calculateCartPricing([{ price: 499.99, qty: 2 }, { price: 250, qty: 1 }], 0, ${gst}, ${pricing.total})`);
+    assert.equal(reversed.total, pricing.total);
+    assert.equal(reversed.gstVal, pricing.gstVal);
+  }
+});
