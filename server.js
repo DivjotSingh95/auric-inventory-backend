@@ -454,6 +454,32 @@ route('post', '/api/borrowings', (req, res) => {
   res.json({success: true, borrowing: req.body});
 });
 
+route('put', '/api/borrowings/:id', (req, res) => {
+  const db = readDb();
+  const borrowing = db.borrowings.find(b => b.id === req.params.id);
+  if (!borrowing) return res.status(404).json({ error: 'Borrowing not found' });
+  const { lenderName, amount, date, dueDate } = req.body || {};
+  const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (typeof lenderName !== 'string' || !lenderName.trim()
+      || typeof amount !== 'number' || !Number.isFinite(amount) || amount < 1
+      || !isDate(date) || !isDate(dueDate)) {
+    return res.status(400).json({ error: 'Enter a lender, an amount of at least 1, and valid dates' });
+  }
+  Object.assign(borrowing, { lenderName: lenderName.trim(), amount, date, dueDate });
+  writeDb(db);
+  res.json({ success: true, borrowing });
+});
+
+route('delete', '/api/borrowings/:id', (req, res) => {
+  const db = readDb();
+  const index = db.borrowings.findIndex(b => b.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Borrowing not found' });
+  db.borrowings.splice(index, 1);
+  writeDb(db);
+  res.json({ success: true });
+});
+
 // 23. POST /api/borrowings/:id/writeoff
 route('post', '/api/borrowings/:id/writeoff', (req, res) => {
   const db = readDb();

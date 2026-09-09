@@ -1273,19 +1273,65 @@ function renderBorrowingsPage() {
     
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td class="font-bold">${b.lenderName}</td>
+      <td class="font-bold"></td>
       <td>${new Date(b.date).toLocaleDateString()}</td>
       <td class="${dueClass}">${dueText}</td>
       <td>
         <span class="status-badge ${b.status === 'Active' ? 'status-lowstock' : 'status-instock'}">${b.status}</span>
       </td>
       <td class="text-right font-bold text-rose">${formatCurrency(b.amount)}</td>
-      <td class="text-right">
-        ${b.status === 'Active' ? `<button class="btn btn-emerald btn-sm" onclick="writeOffBorrowing('${b.id}')">Write Off / Settle</button>` : `<span class="text-muted">Settled</span>`}
-      </td>
+      <td class="text-right"><div class="borrowing-actions"></div></td>
     `;
+    row.cells[0].textContent = b.lenderName;
+    const actions = row.querySelector('.borrowing-actions');
+    const addAction = (label, className, action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `btn btn-sm ${className}`;
+      button.textContent = label;
+      button.addEventListener('click', action);
+      actions.appendChild(button);
+    };
+    addAction('Edit', 'btn-outline', () => openBorrowingModal(b.id));
+    addAction('Delete', 'btn-rose', () => deleteBorrowing(b.id));
+    if (b.status === 'Active') {
+      addAction('Write Off / Settle', 'btn-emerald', () => writeOffBorrowing(b.id));
+    }
     tableBody.appendChild(row);
   });
+}
+
+function openBorrowingModal(id = null) {
+  const borrowing = id === null ? null : borrowings.find(b => b.id === id);
+  if (id !== null && !borrowing) {
+    showToast('Borrowing not found. Please refresh and try again.', 'error');
+    return;
+  }
+  document.getElementById('borrowing-form').reset();
+  document.getElementById('borrowing-edit-id').value = borrowing ? borrowing.id : '';
+  document.getElementById('borrowing-modal-title').textContent = borrowing ? 'Edit Business Borrowing' : 'Log Business Borrowing';
+  document.getElementById('borrowing-save-btn').textContent = borrowing ? 'Save Changes' : 'Log Borrowing';
+  if (borrowing) {
+    document.getElementById('borrowing-lender').value = borrowing.lenderName;
+    document.getElementById('borrowing-amount').value = borrowing.amount;
+    document.getElementById('borrowing-date').value = borrowing.date;
+    document.getElementById('borrowing-duedate').value = borrowing.dueDate;
+  }
+  openModal('borrowing-modal');
+}
+
+async function deleteBorrowing(id) {
+  const borrowing = borrowings.find(b => b.id === id);
+  if (!borrowing || !confirm(`Delete the ${formatCurrency(borrowing.amount)} borrowing from ${borrowing.lenderName}, borrowed on ${new Date(borrowing.date).toLocaleDateString()} and due ${new Date(borrowing.dueDate).toLocaleDateString()}? This cannot be undone.`)) return;
+  try {
+    const response = await fetch('/api/borrowings/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete borrowing');
+    await loadData();
+    renderBorrowingsPage();
+    showToast('Borrowing deleted successfully.', 'success');
+  } catch (err) {
+    showToast('Failed to delete borrowing. Please try again.', 'error');
+  }
 }
 
 async function writeOffBorrowing(id) {
@@ -1966,21 +2012,31 @@ function initEventListeners() {
     }
   });
 
-  // 3. Log Expense
+  // Create or edit a business borrowing.
   document.getElementById("borrowing-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const saveButton = document.getElementById('borrowing-save-btn');
+    if (saveButton.disabled) return;
+    const editId = document.getElementById('borrowing-edit-id').value;
     const newBorrowing = {
-      id: "BOR-" + Math.floor(1000 + Math.random() * 9000),
       lenderName: document.getElementById("borrowing-lender").value.trim(),
       amount: parseFloat(document.getElementById("borrowing-amount").value),
       date: document.getElementById("borrowing-date").value,
-      dueDate: document.getElementById("borrowing-duedate").value,
-      status: "Active"
+      dueDate: document.getElementById("borrowing-duedate").value
     };
+    if (!newBorrowing.lenderName) {
+      showToast('Please enter a lender name.', 'error');
+      return;
+    }
+    if (!editId) {
+      newBorrowing.id = 'BOR-' + crypto.randomUUID();
+      newBorrowing.status = 'Active';
+    }
 
+    saveButton.disabled = true;
     try {
-      const response = await fetch('/api/borrowings', {
-        method: 'POST',
+      const response = await fetch(editId ? '/api/borrowings/' + encodeURIComponent(editId) : '/api/borrowings', {
+        method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBorrowing)
       });
@@ -1992,10 +2048,12 @@ function initEventListeners() {
       const currentHash = window.location.hash.substring(1) || 'dashboard';
       navigateToSection(currentHash);
       
-      showToast(`Borrowing logged: ${formatCurrency(newBorrowing.amount)} from ${newBorrowing.lenderName}`, "success");
+      showToast(`Borrowing ${editId ? 'updated' : 'logged'}: ${formatCurrency(newBorrowing.amount)} from ${newBorrowing.lenderName}`, "success");
     } catch (err) {
       console.error(err);
-      showToast("Failed to log borrowing.", "error");
+      showToast(editId ? 'Failed to update borrowing.' : 'Failed to log borrowing.', 'error');
+    } finally {
+      saveButton.disabled = false;
     }
   });
 

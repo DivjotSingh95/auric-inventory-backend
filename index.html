@@ -544,7 +544,7 @@
               <h2 class="text-white">Business Borrowings & Loans</h2>
             </div>
             <div class="control-right">
-              <button class="btn btn-primary" onclick="openModal('borrowing-modal')">
+              <button class="btn btn-primary" onclick="openBorrowingModal()">
                 <i data-lucide="plus"></i><span>Log Borrowing</span>
               </button>
             </div>
@@ -1033,10 +1033,11 @@
   <div class="modal-overlay" id="borrowing-modal">
     <div class="modal modal-sm">
       <div class="modal-header">
-        <h3>Log Business Borrowing</h3>
+        <h3 id="borrowing-modal-title">Log Business Borrowing</h3>
         <button class="btn-close modal-close-btn" data-modal="borrowing-modal">&times;</button>
       </div>
       <form id="borrowing-form" class="modal-body">
+        <input type="hidden" id="borrowing-edit-id">
         <div class="form-group">
           <label for="borrowing-lender" class="form-label required">Lender Name (Bank/Friend)</label>
           <input type="text" id="borrowing-lender" required placeholder="e.g. HDFC Bank, John" class="form-control">
@@ -1055,7 +1056,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline modal-close-btn" data-modal="borrowing-modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Log Borrowing</button>
+          <button type="submit" class="btn btn-primary" id="borrowing-save-btn">Log Borrowing</button>
         </div>
       </form>
     </div>

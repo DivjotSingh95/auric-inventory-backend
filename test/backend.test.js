@@ -85,6 +85,44 @@ test('product, expense, and borrowing updates persist for a fresh database insta
   assert.equal((await f.request('/api/products/TEST', 'DELETE')).status, 200);
 });
 
+test('borrowing edits preserve settlement status and deletion targets only the selected record', async t => {
+  const f = await fixture(t);
+  const first = { id: 'BOR-1', lenderName: 'Same lender', amount: 500, date: '2026-09-09', dueDate: '2026-10-10', status: 'Active' };
+  const second = { ...first, id: 'BOR-2', amount: 900 };
+  await f.request('/api/borrowings', 'POST', first);
+  await f.request('/api/borrowings', 'POST', second);
+  const changes = { lenderName: ' Updated lender ', amount: 750, date: '2026-09-08', dueDate: '2026-12-24' };
+  assert.equal((await f.request('/api/borrowings/BOR-1', 'PUT', changes)).status, 200);
+  await f.request('/api/borrowings/BOR-1/writeoff', 'POST', {});
+  const edited = await f.request('/api/borrowings/BOR-1', 'PUT', { ...changes, id: 'REPLACED', status: 'Active' });
+  assert.equal(edited.status, 200);
+  const expected = { ...first, ...changes, lenderName: 'Updated lender', status: 'Settled' };
+  assert.deepEqual(edited.body.borrowing, expected);
+  const fresh = createDatabase(f.pool);
+  assert.deepEqual(await fresh.run(false, () => structuredClone(fresh.read().borrowings)), [expected, second]);
+  assert.equal((await f.request('/api/borrowings/BOR-1', 'DELETE')).status, 200);
+  assert.deepEqual((await f.request('/api/data')).body.borrowings, [second]);
+  assert.equal((await f.request('/api/borrowings/BOR-1', 'DELETE')).status, 404);
+  assert.equal((await f.request('/api/borrowings/BOR-1', 'PUT', changes)).status, 404);
+  assert.equal((await f.request('/api/borrowings/BOR-2', 'DELETE')).status, 200);
+  assert.deepEqual((await f.request('/api/data')).body.borrowings, []);
+});
+
+test('invalid or unauthorized borrowing edits and failed commits leave records unchanged', async t => {
+  const f = await fixture(t);
+  const borrowing = { id: 'BOR-1', lenderName: 'Test lender', amount: 500, date: '2026-09-09', dueDate: '2026-10-10', status: 'Active' };
+  await f.request('/api/borrowings', 'POST', borrowing);
+  for (const invalid of [{ lenderName: '  ' }, { amount: -5 }, { amount: null }, { amount: '10' }, { date: '2026-02-30' }, { dueDate: 'bad' }]) {
+    assert.equal((await f.request('/api/borrowings/BOR-1', 'PUT', { ...borrowing, ...invalid })).status, 400);
+  }
+  for (const method of ['PUT', 'DELETE']) {
+    assert.equal((await f.request('/api/borrowings/BOR-1', method, borrowing, '')).status, 401);
+    f.pool.failCommit = true;
+    assert.equal((await f.request('/api/borrowings/BOR-1', method, { ...borrowing, amount: 800 })).status, 503);
+    assert.deepEqual((await f.request('/api/data')).body.borrowings, [borrowing]);
+  }
+});
+
 test('simultaneous checkouts cannot oversell, and a retry cannot deduct twice', async t => {
   const f = await fixture(t);
   const sale = id => ({ id, items: [{ sku: 'TEST', size: 'M', qty: 2, price: 20, cost: 10 }], total: 40 });

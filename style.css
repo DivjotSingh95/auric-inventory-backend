@@ -892,6 +892,17 @@ body {
   border: 1px solid rgba(244, 63, 94, 0.2);
 }
 
+.borrowing-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.borrowing-actions .btn {
+  white-space: nowrap;
+}
+
 .action-buttons {
   display: flex;
   justify-content: flex-end;
