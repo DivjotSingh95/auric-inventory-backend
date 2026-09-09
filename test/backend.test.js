@@ -123,6 +123,58 @@ test('invalid or unauthorized borrowing edits and failed commits leave records u
   }
 });
 
+test('SKU rename preserves product details and history while keeping pending deliveries connected', async t => {
+  const f = await fixture(t);
+  const product = { ...f.seed.products[0], sizes: { M: 3, '3XL': 2, '4XL': 3, '5XL': 4 }, dateAdded: '2026-09-01', variants: { 'Standard-5XL': { stock: 4, costPrice: 10, sellingPrice: 25 } } };
+  await f.request('/api/products', 'POST', product);
+  await f.request('/api/purchase-orders', 'POST', { id: 'PENDING', status: 'Issued', items: [{ sku: 'TEST', color: 'Standard', size: '5XL', qty: 2 }], totalAmount: 20 });
+  await f.request('/api/purchase-orders', 'POST', { id: 'DONE', status: 'Received', items: [{ sku: 'TEST', size: 'M', qty: 1, received: 1 }] });
+  const before = (await f.request('/api/data')).body;
+  assert.equal((await f.request('/api/products/TEST', 'PUT', { sku: 'renamed' })).status, 200);
+  const after = (await f.request('/api/data')).body;
+  assert.deepEqual(after.products, [{ ...product, sku: 'RENAMED' }]);
+  const expected = structuredClone(before);
+  expected.products[0].sku = 'RENAMED';
+  expected.purchaseOrders[0].items[0].sku = 'RENAMED';
+  assert.deepEqual(after, expected);
+  assert.equal((await f.request('/api/purchase-orders/PENDING/receive', 'PUT', { receivedItems: [{ sku: 'RENAMED', color: 'Standard', size: '5XL', receivedQty: 2 }], status: 'Received' })).status, 200);
+  assert.equal((await f.request('/api/data')).body.products[0].sizes['5XL'], 6);
+});
+
+test('SKU conflicts, missing products, unauthorized updates and failed commits cannot alter inventory', async t => {
+  const f = await fixture(t);
+  await f.request('/api/products', 'POST', { ...f.seed.products[0], sku: 'OTHER' });
+  const before = (await f.request('/api/data')).body;
+  assert.equal((await f.request('/api/products/TEST', 'PUT', { sku: 'other' })).status, 409);
+  assert.equal((await f.request('/api/products/TEST', 'PUT', { sku: ' ' })).status, 400);
+  assert.equal((await f.request('/api/products/MISSING', 'PUT', { sku: 'NEW' })).status, 404);
+  assert.equal((await f.request('/api/products/TEST', 'PUT', { sku: 'NEW' }, '')).status, 401);
+  f.pool.failCommit = true;
+  assert.equal((await f.request('/api/products/TEST', 'PUT', { sku: 'NEW' })).status, 503);
+  assert.deepEqual((await f.request('/api/data')).body, before);
+});
+
+test('3XL through 5XL stock survives reload and can be sold by size', async t => {
+  const f = await fixture(t);
+  await f.request('/api/purchase-orders', 'POST', { id: 'NEW-SIZE', status: 'Issued', items: [{ sku: 'TEST', color: 'Standard', size: '5XL', qty: 2 }] });
+  assert.equal((await f.request('/api/purchase-orders/NEW-SIZE/receive', 'PUT', { receivedItems: [{ sku: 'TEST', color: 'Standard', size: '5XL', receivedQty: 2 }], status: 'Received' })).status, 200);
+  assert.equal((await f.request('/api/data')).body.products[0].sizes['5XL'], 2);
+  const sizes = { '3XL': 2, '4XL': 3, '5XL': 4 };
+  const variants = Object.fromEntries(Object.entries(sizes).map(([size, stock]) => ['Standard-' + size, { stock, costPrice: 10, sellingPrice: 20 }]));
+  const product = { ...f.seed.products[0], sizes, variants };
+  await f.request('/api/products', 'POST', product);
+  const fresh = createDatabase(f.pool);
+  assert.deepEqual(await fresh.run(false, () => structuredClone(fresh.read().products[0])), product);
+  for (const size of Object.keys(sizes)) {
+    assert.equal((await f.request('/api/sales', 'POST', { id: 'SALE-' + size, items: [{ sku: 'TEST', color: 'Standard', size, qty: 1, price: 20 }], total: 20 })).status, 200);
+  }
+  const saved = (await f.request('/api/data')).body.products[0];
+  for (const [size, stock] of Object.entries(sizes)) {
+    assert.equal(saved.sizes[size], stock - 1);
+    assert.equal(saved.variants['Standard-' + size].stock, stock - 1);
+  }
+});
+
 test('simultaneous checkouts cannot oversell, and a retry cannot deduct twice', async t => {
   const f = await fixture(t);
   const sale = id => ({ id, items: [{ sku: 'TEST', size: 'M', qty: 2, price: 20, cost: 10 }], total: 40 });

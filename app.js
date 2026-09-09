@@ -55,6 +55,7 @@ function refreshIcons(root = document) {
 }
 
 // --- State Variables ---
+const PRODUCT_SIZES = ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'];
 let products = [];
 let sales = [];
 let expenses = [];
@@ -724,7 +725,7 @@ function addToCart(sku) {
   let variantsObj = product.variants;
   if (!variantsObj || Object.keys(variantsObj).length === 0) {
     variantsObj = {};
-    const sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+    const sizes = PRODUCT_SIZES;
     sizes.forEach(sz => {
       variantsObj[`Standard-${sz}`] = { stock: product.sizes ? (product.sizes[sz] || 0) : 0, costPrice: product.costPrice, sellingPrice: product.sellingPrice };
     });
@@ -750,7 +751,7 @@ function addToCart(sku) {
   };
 
   const renderSizeButtons = () => {
-    const sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+    const sizes = PRODUCT_SIZES;
     sizeContainer.innerHTML = sizes.map(sz => {
       const varKey = `${selectedColor}-${sz}`;
       const varData = variantsObj[varKey] || { stock: 0, sellingPrice: product.sellingPrice };
@@ -1008,7 +1009,7 @@ function renderStockPage() {
       // Find original index in master products array to reference for edit/delete
       const masterIdx = products.findIndex(mp => mp.sku === p.sku);
 
-      const sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+      const sizes = PRODUCT_SIZES;
       const sizesListHTML = sizes.map(sz => {
         const qty = p.sizes ? (p.sizes[sz] || 0) : 0;
         return `<span class="catalog-size-item ${qty === 0 ? 'empty' : ''}">${sz}: <strong>${qty}</strong></span>`;
@@ -1112,7 +1113,7 @@ function renderLowStockPage() {
         ? `<span class="badge badge-danger">Out of Stock</span>` 
         : `<span class="badge badge-warning">Low Stock</span>`;
 
-      const sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+      const sizes = PRODUCT_SIZES;
       const sizesListHTML = sizes.map(sz => {
         const qty = p.sizes ? (p.sizes[sz] || 0) : 0;
         return `<span class="catalog-size-item ${qty === 0 ? 'empty' : ''}">${sz}: <strong>${qty}</strong></span>`;
@@ -1164,7 +1165,7 @@ function editProduct(masterIdx) {
   document.getElementById("product-modal-title").textContent = "Edit Product";
   document.getElementById("product-edit-index").value = masterIdx;
   document.getElementById("product-sku").value = p.sku;
-  document.getElementById("product-sku").readOnly = true;
+  document.getElementById("product-sku").readOnly = false;
   document.getElementById("product-name").value = p.name;
   document.getElementById("product-category").value = p.category;
   document.getElementById("product-cost-price").value = p.costPrice;
@@ -1175,11 +1176,9 @@ function editProduct(masterIdx) {
   const colorInput = document.getElementById("product-colors");
   if (colorInput) colorInput.value = colorsStr;
 
-  document.getElementById("product-stock-s").value = p.sizes ? (p.sizes.S || 0) : 0;
-  document.getElementById("product-stock-m").value = p.sizes ? (p.sizes.M || 0) : 0;
-  document.getElementById("product-stock-l").value = p.sizes ? (p.sizes.L || 0) : 0;
-  document.getElementById("product-stock-xl").value = p.sizes ? (p.sizes.XL || 0) : 0;
-  document.getElementById("product-stock-xxl").value = p.sizes ? (p.sizes.XXL || 0) : 0;
+  PRODUCT_SIZES.forEach(size => {
+    document.getElementById('product-stock-' + size.toLowerCase()).value = p.sizes?.[size] || 0;
+  });
   document.getElementById("product-threshold").value = p.threshold;
 
   openModal("product-modal");
@@ -1879,13 +1878,9 @@ function initEventListeners() {
     const category = document.getElementById("product-category").value;
     const costPrice = parseFloat(document.getElementById("product-cost-price").value);
     const sellingPrice = parseFloat(document.getElementById("product-selling-price").value);
-    const sizes = {
-      S: parseInt(document.getElementById("product-stock-s").value) || 0,
-      M: parseInt(document.getElementById("product-stock-m").value) || 0,
-      L: parseInt(document.getElementById("product-stock-l").value) || 0,
-      XL: parseInt(document.getElementById("product-stock-xl").value) || 0,
-      XXL: parseInt(document.getElementById("product-stock-xxl").value) || 0
-    };
+    const sizes = Object.fromEntries(PRODUCT_SIZES.map(size => [
+      size, parseInt(document.getElementById('product-stock-' + size.toLowerCase()).value) || 0
+    ]));
     const threshold = parseInt(document.getElementById("product-threshold").value);
 
     if (costPrice > sellingPrice) {
@@ -1894,11 +1889,9 @@ function initEventListeners() {
       }
     }
 
-    if (editIdx === "") {
-      if (products.some(p => p.sku === sku)) {
-        showToast("SKU already exists! Please use a unique identifier.", "error");
-        return;
-      }
+    if (!sku || products.some((p, index) => p.sku.toUpperCase() === sku && String(index) !== editIdx)) {
+      showToast(sku ? 'SKU already exists! Please use a unique identifier.' : 'Please enter an SKU.', 'error');
+      return;
     }
 
     const vendorName = document.getElementById("product-vendor")?.value || "";
@@ -1919,7 +1912,15 @@ function initEventListeners() {
       });
     });
 
-    const updatedProduct = { sku, name, category, costPrice, sellingPrice, sizes, threshold, vendorName, variants };
+    const updatedProduct = { ...oldP, sku, name, category, costPrice, sellingPrice, sizes, threshold, vendorName, variants };
+    // A details-only edit must preserve existing stock and custom variant prices.
+    const sameSizes = oldP && PRODUCT_SIZES.every(size => (oldP.sizes?.[size] || 0) === sizes[size]);
+    const oldColors = oldP?.variants ? [...new Set(Object.keys(oldP.variants).map(key => key.split('-')[0]))] : ['Standard'];
+    if (sameSizes) updatedProduct.sizes = oldP.sizes;
+    if (sameSizes && colorList.length === oldColors.length && colorList.every(color => oldColors.includes(color))) {
+      if (oldP.variants) updatedProduct.variants = oldP.variants;
+      else delete updatedProduct.variants;
+    }
     
     if (editIdx !== "") {
       updatedProduct.dateAdded = oldP.dateAdded || new Date().toISOString();
@@ -1928,15 +1929,19 @@ function initEventListeners() {
     }
 
     try {
-      const response = await fetch('/api/products', {
-        method: 'POST',
+      const response = await fetch(oldP ? '/api/products/' + encodeURIComponent(oldP.sku) : '/api/products', {
+        method: oldP ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(updatedProduct)
       });
       if (!response.ok) {
-        throw new Error('Failed to save product');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save product');
+      }
+      if (oldP && oldP.sku !== sku) {
+        cart.forEach(item => { if (item.sku === oldP.sku) item.sku = sku; });
       }
       
       await loadData();
@@ -1952,7 +1957,7 @@ function initEventListeners() {
       }
     } catch (err) {
       console.error(err);
-      showToast("Failed to save product.", "error");
+      showToast(err.message || 'Failed to save product.', 'error');
     }
   });
 
@@ -1972,7 +1977,7 @@ function initEventListeners() {
       }
       const updatedProduct = JSON.parse(JSON.stringify(product));
       if (!updatedProduct.sizes) {
-        updatedProduct.sizes = { S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
+        updatedProduct.sizes = Object.fromEntries(PRODUCT_SIZES.map(size => [size, 0]));
       }
       updatedProduct.sizes[size] = (updatedProduct.sizes[size] || 0) + qty;
       
@@ -2996,7 +3001,7 @@ async function handleVariantPriceSubmit(e) {
   
   if (!p.variants) {
     p.variants = {};
-    const sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+    const sizes = PRODUCT_SIZES;
     sizes.forEach(sz => {
       p.variants[`Standard-${sz}`] = { stock: p.sizes ? (p.sizes[sz] || 0) : 0, costPrice: p.costPrice, sellingPrice: p.sellingPrice };
     });

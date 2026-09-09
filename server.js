@@ -157,6 +157,29 @@ route('post', '/api/products', (req, res) => {
   res.json(req.body);
 });
 
+// Edit by the original SKU so a rename updates one product atomically.
+route('put', '/api/products/:sku', (req, res) => {
+  const db = readDb();
+  const idx = db.products.findIndex(p => p.sku === req.params.sku);
+  if (idx === -1) return res.status(404).json({ error: 'Product not found. Please refresh and try again.' });
+  const sku = typeof req.body?.sku === 'string' ? req.body.sku.trim().toUpperCase() : '';
+  if (!sku) return res.status(400).json({ error: 'SKU required' });
+  if (db.products.some((p, index) => index !== idx && p.sku.toUpperCase() === sku)) {
+    return res.status(409).json({ error: 'SKU already exists! Please use a unique identifier.' });
+  }
+  db.products[idx] = { ...db.products[idx], ...req.body, sku };
+  if (sku !== req.params.sku) {
+    // Keep outstanding deliveries connected; completed transaction history stays intact.
+    for (const po of db.purchaseOrders || []) {
+      for (const item of po.items || []) {
+        if (item.sku === req.params.sku && (item.qtyReceived ?? item.received ?? 0) < item.qty) item.sku = sku;
+      }
+    }
+  }
+  writeDb(db);
+  res.json(db.products[idx]);
+});
+
 // 4. DELETE /api/products/:sku
 route('delete', '/api/products/:sku', (req, res) => {
   const db = readDb();
@@ -349,7 +372,7 @@ route('put', '/api/purchase-orders/:poNumber/receive', (req, res) => {
           prod.variants[varKey] = { stock: 0, costPrice: rec.wholesaleCost || prod.costPrice, sellingPrice: prod.sellingPrice };
         }
         prod.variants[varKey].stock += rec.newlyReceived;
-        if (prod.sizes && prod.sizes[rec.size] !== undefined) prod.sizes[rec.size] = (prod.sizes[rec.size] || 0) + rec.newlyReceived;
+        if (prod.sizes) prod.sizes[rec.size] = (prod.sizes[rec.size] || 0) + rec.newlyReceived;
       }
     });
   }
